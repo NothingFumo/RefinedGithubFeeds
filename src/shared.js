@@ -49,14 +49,34 @@ function extractItem(el) {
   const repoLink = q('a[data-hovercard-type="repository"]');
   const actorEl = q('a[data-hovercard-type="user"]');
   const eventBadge = q('[data-test-selector="feed-item-event-type"], [data-ga-click*="feed-item"]');
-  // 卡片类型：真实 DOM 中 data-hydro-view 的 feed_card.card_type（如 STARRED_REPOSITORY）
+  // 卡片类型：主锚点 = data-hydro-view 的 feed_card.card_type（如 STARRED_REPOSITORY）
   let cardType = null;
   const hydroEl = el.matches('[data-hydro-view]') ? el : el.querySelector('[data-hydro-view]');
   if (hydroEl) {
     try {
       const payload = JSON.parse(hydroEl.getAttribute('data-hydro-view'));
       cardType = (payload?.payload?.feed_card?.card_type || null);
-    } catch { /* JSON 损坏时降级为 null，不中断渲染 */ }
+    } catch { /* JSON 损坏时降级到次级信号 */ }
+  }
+  // 次级锚点（hydro 缺失/损坏时的精确回退，全部来自实抓结构）：
+  //   标题图标 feed-star/feed-forked/feed-merged/feed-tag → 四种社交与仓库动态
+  //   固定文案 "Recommended for you" / "Trending repositories" → 两类推荐
+  if (!cardType) {
+    const icon = el.querySelector('[class*="feed-item-heading-icon"]') ||
+                 el.querySelector('[class*="octicon-feed-"]');
+    const iconCls = icon ? icon.getAttribute('class') : '';
+    if (/octicon-feed-star\b/.test(iconCls)) cardType = 'STARRED_REPOSITORY';
+    else if (/octicon-feed-forked\b/.test(iconCls)) cardType = 'FORKED_REPOSITORY';
+    else if (/octicon-feed-merged\b/.test(iconCls)) cardType = 'MERGED_PULL_REQUEST';
+    else if (/octicon-feed-tag\b/.test(iconCls)) cardType = 'RELEASE';
+    else {
+      const plain = el.textContent;
+      if (/\bRecommended for you\b/.test(plain)) cardType = 'REPOSITORY_RECOMMENDATION';
+      else if (/\bTrending repositories\b/.test(plain)) cardType = 'TRENDING_REPOSITORY';
+      else if (/\breleased\b/.test(plain)) cardType = 'RELEASE';
+      else if (/\bforked\b/.test(plain)) cardType = 'FORKED_REPOSITORY';
+      else if (/\bstarred\b/.test(plain)) cardType = 'STARRED_REPOSITORY';
+    }
   }
   // 发起者：优先 hovercard 链接（actor 头像/用户名），避免把仓库 owner 误当 actor
   let actor = null;
