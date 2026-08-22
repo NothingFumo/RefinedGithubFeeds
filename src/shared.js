@@ -171,12 +171,23 @@ function extractItem(el) {
       cardType = (payload?.payload?.feed_card?.card_type || null);
     } catch { /* JSON 损坏时降级为 null，不中断渲染 */ }
   }
+  // 发起者：优先 hovercard 链接（actor 头像/用户名），避免把仓库 owner 误当 actor
+  let actor = null;
+  if (actorEl) {
+    actor = actorEl.getAttribute('href')?.split('/')[1] ||
+            actorEl.textContent.replace(/^@\s*/, '').trim() || null;
+  }
   return {
-    actor: actorEl ? actorEl.textContent.replace(/^@\s*/, '').trim() || null : null,
+    actor,
     repo: repoLink ? repoLink.textContent.replace(/\s+/g, '').trim() || null : null,
     event: eventBadge ? eventBadge.getAttribute('data-feed-item-type') || null : null,
     cardType,
     text: el.textContent.replace(/\s+/g, ' ').trim(),
     el,
   };
+}
+
+// 当前登录用户名（GitHub 在页面 meta 中注入，任意语言界面可用）
+function currentUser() {
+  return document.querySelector('meta[name="user-login"]')?.getAttribute('content') || null;
 }
