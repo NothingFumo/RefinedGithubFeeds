@@ -76,28 +76,34 @@ async function main() {
   })()`);
   await evaljs(ws, `__rgfReady`);
 
-  // ---- 场景 1：初始过滤（allow alice + deny spammer -> 白名单模式）----
+  // ---- 场景 1：未配置白名单时全部显示 ----
   const s1 = await evaljs(ws, `JSON.stringify((() => ({
     badge: document.querySelector('#rgf-badge').textContent,
     alice: document.querySelector('#item-alice').style.display,
     spammer: document.querySelector('#item-spammer').style.display,
-    bob: document.querySelector('#item-bob').style.display,
     quickBtns: [...document.querySelectorAll('.rgf-quick-btn button')].map(b => b.textContent),
   }))())`);
   const state1 = JSON.parse(s1);
-  check('角标显示白名单隐藏计数', state1.badge, '已隐藏 2 条动态，点击临时撤销');
-  check('alice 放行（命中 allow）', state1.alice, '');
-  check('spammer 隐藏（未命中 allow）', state1.spammer, 'none');
-  check('bob 隐藏（未命中 allow）', state1.bob, 'none');
-  check('悬停快捷按钮已注入', state1.quickBtns.sort(), ['隐藏 @alice', '隐藏 alice/web-toolkit', '隐藏 @bob', '隐藏 bob/kernel', '隐藏 @spammer', '隐藏 spammer/junk'].sort());
+  check('角标显示暂无隐藏', state1.badge, '暂无隐藏动态');
+  check('alice 显示（未配置过滤）', state1.alice, '');
+  check('spammer 显示（未配置过滤）', state1.spammer, '');
+  check('快捷按钮为隐藏此类动态', state1.quickBtns.every(t => t === '隐藏此类动态'), true);
 
-  // ---- 场景 2：点击角标 -> 临时撤销 ----
-  await evaljs(ws, `document.querySelector('#rgf-badge').click(); 'clicked'`);
-  await new Promise((r) => setTimeout(r, 400));
-  const s2 = JSON.parse(await evaljs(ws, `JSON.stringify({
+  // ---- 场景 2：配置白名单只留 STARRED -> fork 条目隐藏；撤销恢复 ----
+  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.allowedTypes': ['STARRED_REPOSITORY'] }); 'set'`);
+  await new Promise((r) => setTimeout(r, 600));
+  const s2a = JSON.parse(await evaljs(ws, `JSON.stringify({
     badge: document.querySelector('#rgf-badge').textContent,
     spammer: document.querySelector('#item-spammer').style.display })`));
-  check('临时撤销后全部显示', [s2.spammer, s2.badge], ['', '已临时撤销过滤 · 隐藏计数 2（点击恢复）']);
+  check('白名单外 fork 条目隐藏', s2a.spammer, 'none');
+  check('角标计数为 1', s2a.badge, '已隐藏 1 条动态，点击临时撤销');
+
+  await evaljs(ws, `document.querySelector('#rgf-badge').click(); 'clicked'`);
+  await new Promise((r) => setTimeout(r, 400));
+  const s2b = JSON.parse(await evaljs(ws, `JSON.stringify({
+    badge: document.querySelector('#rgf-badge').textContent,
+    spammer: document.querySelector('#item-spammer').style.display })`));
+  check('临时撤销后全部显示', [s2b.spammer, s2b.badge], ['', '已临时撤销过滤 · 隐藏计数 1（点击恢复）']);
 
   // ---- 场景 3：再次点击 -> 恢复过滤 ----
   await evaljs(ws, `document.querySelector('#rgf-badge').click(); 'clicked'`);
@@ -119,18 +125,14 @@ async function main() {
   const s4 = JSON.parse(await evaljs(ws, `JSON.stringify({ newItem: document.querySelector('#item-new-spam').style.display, badge: document.querySelector('#rgf-badge').textContent })`));
   check('新插入条目被自动过滤', s4.newItem, 'none');
 
-  // ---- 场景 5：popup 流程等价——添加 keyword deny 规则，storage 变更联动 ----
-  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.rules': [
-    { id: 'r_deny_spammer', dimension: 'actor', pattern: 'spammer', polarity: 'deny', enabled: true, hits: 0 },
-    { id: 'r_kw_release', dimension: 'keyword', pattern: '*release*', polarity: 'deny', enabled: true, hits: 0 },
-  ] }); 'set'`);
+  // ---- 场景 5：storage 写入白名单即联动（popup 等价路径）----
+  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.allowedTypes': ['STARRED_REPOSITORY','FORKED_REPOSITORY'] }); 'set'`);
   await new Promise((r) => setTimeout(r, 600));
   const s5 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
     badge: document.querySelector('#rgf-badge').textContent,
-    alice: document.querySelector('#item-alice').style.display,
+    spammer: document.querySelector('#item-spammer').style.display,
   }))())`));
-  check('新增关键词规则后 alice 仍放行', s5.alice, '');
-  check('角标计数更新为黑名单模式文案', s5.badge.includes('已隐藏'), true);
+  check('白名单加回 FORKED 后条目显示', s5.spammer, '');
 
   // ---- 场景 6：总开关关闭 ----
   await evaljs(ws, `chrome.storage.sync.set({ 'rgf.enabled': false }); 'set'`);
