@@ -242,9 +242,10 @@ async function main() {
   })()`);
   check('宿主外孤儿区块被自动清扫', true, true);
 
-  // ---- 场景 8e：细粒度开关草稿 -> 原生 Save 提交 ----
+  // ---- 场景 8e：白名单语义——只勾选 Star 时其余类型条目隐藏 ----
   await evaljs(ws, `(() => {
-    const chk = document.querySelector('.rgf-subfilters input[data-card-type="RELEASE"]');
+    // 取消勾选 FORKED（即白名单中移除），Save 后 fork 条目应隐藏
+    const chk = document.querySelector('.rgf-subfilters input[data-card-type="FORKED_REPOSITORY"]');
     if (!chk) throw new Error('subfilter missing');
     chk.checked = false;
     chk.dispatchEvent(new Event('change'));
@@ -253,17 +254,16 @@ async function main() {
   await evaljs(ws, `[...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click(); 'saved'`);
   await new Promise((r) => setTimeout(r, 700));
   const s12 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
-    stored: window.__rgfStore['rgf.excludedTypes'] || [],
+    stored: window.__rgfStore['rgf.allowedTypes'] || [],
     spammer: document.querySelector('#item-spammer') ? document.querySelector('#item-spammer').style.display : 'gone',
   }))())`));
-  check('Save 后类型排除写入存储', s12.stored.includes('RELEASE'), true);
-  check('排除 RELEASE 后 fork 条目隐藏', s12.spammer === 'none', true);
+  check('Save 后白名单写入存储（不含 FORKED）', !s12.stored.includes('FORKED_REPOSITORY'), true);
+  check('白名单外类型条目隐藏', s12.spammer === 'none', true);
   // 还原：重新勾选并 Save
   await evaljs(ws, `(() => {
-    const chk = document.querySelector('.rgf-subfilters input[data-card-type="RELEASE"]');
+    const chk = document.querySelector('.rgf-subfilters input[data-card-type="FORKED_REPOSITORY"]');
     if (chk) { chk.checked = true; chk.dispatchEvent(new Event('change')); }
     [...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click();
-    return 'restored';
   })()`);
   await new Promise((r) => setTimeout(r, 500));
 
