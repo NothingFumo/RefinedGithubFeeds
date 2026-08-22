@@ -159,6 +159,13 @@ function renderRuleList(block) {
   list.textContent = '';
   const source = draftRules || rules;
   updateModeHint(block.querySelector('.rgf-mode-hint'), source);
+  // 区块重建后草稿可能仍存活：与已存规则不一致时恢复"未保存"提示
+  const mark = block.querySelector('.rgf-draft-mark');
+  if (mark) {
+    const dirty = draftRules !== null && rulesChanged();
+    mark.hidden = !dirty;
+    if (dirty) mark.textContent = '未保存';
+  }
   for (const rule of source) {
     const rowEl = document.createElement('div');
     rowEl.className = 'rgf-rule-row';
@@ -266,9 +273,13 @@ async function injectPanelBlock() {
     resetBtn.addEventListener('click', () => { discardDraft(); }, true);
   }
 
-  // 组间分隔：与原生分组一致使用 hr（真实 DOM 中 Events 分组后即为 hr.mb-0.tmp-mx-3）
+  // 组间分隔：与原生分组一致使用 hr；先清理残留再注入，防止重注入时堆积错位
+  for (const stale of host.querySelectorAll(':scope > hr[data-rgf-sep]')) {
+    stale.remove();
+  }
   const sep = document.createElement('hr');
   sep.className = 'mb-0 tmp-mx-3';
+  sep.dataset.rgfSep = 'true';
   host.appendChild(sep);
   host.appendChild(block);
   renderRuleList(block);
