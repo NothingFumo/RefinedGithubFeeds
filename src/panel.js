@@ -107,9 +107,7 @@ const CARD_TYPE_DEFS = [
   ['TRENDING_REPOSITORY', '趋势榜'],
   ['PRIVATE_TO_PUBLIC_REPOSITORY', '私有转公开'],
 ];
-const SUBFILTER_KEY = 'rgf.allowedTypes'; // 白名单：勾选的 card_type 才显示
 
-let allowedCardTypesLive = null; // 白名单实时视图（panel 与 storage 同步）
 const FOLLOWERS_KEY = 'rgf.followers';
 const FOLLOWERS_AT_KEY = 'rgf.followersAt';
 const SCOPE_KEY = 'rgf.scope';
@@ -119,11 +117,7 @@ let scopeState = null;      // { onlyFollowers, onlyMyRepos } 草稿
 let followersCache = [];    // 当前已缓存名单（用于显示数量）
 
 async function buildSubFilters(block) {
-  const stored = await chrome.storage.sync.get([SUBFILTER_KEY, SCOPE_KEY, FOLLOWERS_KEY, FOLLOWERS_AT_KEY]);
-  // 白名单语义：键不存在 = 未配置 = 全部类型显示；存在则只显示集合内类型
-  allowedCardTypesLive = Array.isArray(stored[SUBFILTER_KEY])
-    ? new Set(stored[SUBFILTER_KEY])
-    : new Set(CARD_TYPE_DEFS.map(([t]) => t));
+  const stored = await chrome.storage.sync.get([SCOPE_KEY, FOLLOWERS_KEY, FOLLOWERS_AT_KEY]);
   scopeState = Object.assign({ onlyFollowers: false, onlyMyRepos: false }, stored[SCOPE_KEY]);
   followersCache = stored[FOLLOWERS_KEY] || [];
   const followersAt = stored[FOLLOWERS_AT_KEY] || 0;
@@ -131,7 +125,7 @@ async function buildSubFilters(block) {
   const section = document.createElement('div');
   section.className = 'rgf-subfilters';
 
-  // ---- 发起者范围开关（切换立即写入并重过滤）----
+  // ---- 发起者范围开关（扩展独有增强；切换立即重过滤）----
   const scopeBox = document.createElement('div');
   scopeBox.className = 'rgf-scope-box my-2';
   for (const [key, label, hint] of [
@@ -148,7 +142,7 @@ async function buildSubFilters(block) {
     chk.addEventListener('change', async () => {
       scopeState[key] = chk.checked;
       await chrome.storage.sync.set({ [SCOPE_KEY]: scopeState });
-      applyFilter(); // storage 监听也会触发，这里主动调一次保证即时性
+      applyFilter();
     });
     const lbl = document.createElement('span');
     lbl.className = 'ml-2';
@@ -170,7 +164,7 @@ async function buildSubFilters(block) {
     refreshBtn.disabled = true;
     refreshBtn.textContent = '抓取中…';
     try {
-      const n = await fetchFollowers();
+      await fetchFollowers();
       loadAndApply();
     } catch (e) {
       refreshBtn.textContent = '抓取失败';
@@ -181,28 +175,61 @@ async function buildSubFilters(block) {
   scopeBox.appendChild(refreshRow);
   section.appendChild(scopeBox);
 
-  // ---- 卡片类型开关（按语义分组展示；切换立即生效）----
+  // ---- 细粒度卡片类型开关：直接驱动原生复选框（真正的原生增强）----
+  // 每个开关映射到原生分组的一个 card_type 子集；切换时改写原生
+  // checkbox 的 checked 并触发 feed-filter Catalyst 重载，
+  // 使服务端偏好与前端状态保持一致。
   const groups = [
-    ['社交动态', ['STARRED_REPOSITORY', 'FORKED_REPOSITORY']],
-    ['仓库活动', ['MERGED_PULL_REQUEST', 'RELEASE', 'PRIVATE_TO_PUBLIC_REPOSITORY']],
-    ['发现内容', ['ADDED_TO_LIST', 'REPOSITORY_RECOMMENDATION', 'TRENDING_REPOSITORY']],
+    ['社交动态', [
+      ['STARRED_REPOSITORY', 'Star（仓库被 star）', 'Stars'],
+      ['FORKED_REPOSITORY', 'Fork（仓库被 fork）', 'Repositories'],
+    ]],
+    ['仓库活动', [
+      ['MERGED_PULL_REQUEST', 'PR 合并', 'RepositoryActivity'],
+      ['RELEASE', 'Release 发布', 'Releases'],
+      ['PRIVATE_TO_PUBLIC_REPOSITORY', '私有转公开', 'Repositories'],
+    ]],
+    ['发现内容', [
+      ['ADDED_TO_LIST', '加入 Star List', 'Recommendations'],
+      ['REPOSITORY_RECOMMENDATION', '算法推荐', 'Recommendations'],
+      ['TRENDING_REPOSITORY', '趋势榜', 'Recommendations'],
+    ]],
   ];
-  for (const [groupLabel, types] of groups) {
+  const nativeInputs = () => {
+    const map = {};
+    for (const inp of document.querySelectorAll(
+      '#feed-filter-menu input[data-targets="feed-filter.inputs"][name]')) {
+      map[inp.name] = inp;
+    }
+    return map;
+  };
+
+  for (const [groupLabel, defs] of groups) {
     const gTitle = document.createElement('div');
     gTitle.className = 'rgf-group-title small text-bold color-fg-default tmp-px-3 mt-2';
     gTitle.textContent = groupLabel;
     section.appendChild(gTitle);
-    for (const [type, label] of CARD_TYPE_DEFS.filter(([t]) => types.includes(t))) {
+    for (const [type, label, nativeGroup] of defs) {
       const rowEl = document.createElement('label');
       rowEl.className = 'rgf-sub-row d-flex flex-items-center my-1 tmp-px-3 text-normal SelectMenu-item';
       const chk = document.createElement('input');
       chk.type = 'checkbox';
-      chk.checked = allowedCardTypesLive.has(type); // 勾选=显示该类型
+      // 初始态跟随原生分组勾选（同组内所有子类型共享父开关状态）
+      const nInput = nativeInputs()[nativeGroup];
+      chk.checked = nInput ? nInput.checked : true;
       chk.dataset.cardType = type;
-      chk.addEventListener('change', async () => {
-        if (chk.checked) { allowedCardTypesLive.add(type); } else { allowedCardTypesLive.delete(type); }
-        await chrome.storage.sync.set({ [SUBFILTER_KEY]: [...allowedCardTypesLive] });
-        applyFilter();
+      chk.dataset.nativeGroup = nativeGroup;
+      chk.addEventListener('change', () => {
+        // 驱动原生复选框：勾选=恢复该组显示，取消=隐藏整组
+        const map = nativeInputs();
+        const target = map[nativeGroup];
+        if (target) {
+          if (target.checked !== chk.checked) {
+            target.checked = chk.checked;
+            target.dispatchEvent(new Event('click', { bubbles: true }));
+          }
+        }
+        applyFilter(); // 前端即时反馈
       });
       const lbl = document.createElement('span');
       lbl.className = 'ml-2';

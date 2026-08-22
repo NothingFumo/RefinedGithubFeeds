@@ -54,22 +54,18 @@ function updateBadge(hiddenCount) {
 
 // ---- 过滤主流程 ----
 
-// 原生筛选面板勾选状态 -> 卡片类型白名单。未勾选的类型一律隐藏。
+// 原生筛选面板勾选状态 -> 卡片类型过滤。未勾选的类型一律隐藏。
 // data-name 与 feed_card.card_type 的映射（用户页面 2.5MB 实抓校准）：
 const NATIVE_TYPE_MAP = {
-  Announcements: 'ANNOUNCEMENT',
   Releases: 'RELEASE',
-  Sponsors: null,            // 无独立 card_type，按关键词降级
+  Sponsors: null,            // 无独立 card_type，无法精确判定则不过滤
   Stars: 'STARRED_REPOSITORY',
-  Repositories: 'FORKED_REPOSITORY,PRIVATE_TO_PUBLIC_REPOSITORY', // 实抓无 CREATED_*
+  Repositories: 'FORKED_REPOSITORY,PRIVATE_TO_PUBLIC_REPOSITORY',
   RepositoryActivity: 'MERGED_PULL_REQUEST,PULL_REQUEST',
-  Follows: 'FOLLOW',
   Recommendations: 'REPOSITORY_RECOMMENDATION,TRENDING_REPOSITORY,ADDED_TO_LIST',
 };
 
 
-// 细粒度类型白名单（panel.js 更细过滤勾选项写入 rgf.allowedTypes）
-let allowedCardTypes = null;
 // 发起者范围开关：rgf.scope = { onlyFollowers: bool, onlyMyRepos: bool }
 let scopeFilter = { onlyFollowers: false, onlyMyRepos: false };
 // 关注者名单缓存（panel.js 抓取写入 rgf.followers + rgf.followersAt）
@@ -85,14 +81,8 @@ function readNativeSelection() {
   return { checked, unchecked };
 }
 
-// 条目是否被排除：细粒度类型白名单（只显示勾选的类型）/ 原生未勾选分组 / 发起者范围
+// 条目是否被排除：原生未勾选分组 / 发起者范围（无全局白名单层）
 function isExcluded(item, unchecked) {
-  // 细粒度开关为白名单语义：勾选的类型显示。
-  // 无 cardType 的条目（无法归类）不参与白名单过滤，始终显示——
-  // 避免动态插入/未知类型条目被误杀
-  if (allowedCardTypes !== null && item.cardType) {
-    if (!allowedCardTypes.has(item.cardType)) return true;
-  }
   if (unchecked.size > 0 && item.cardType) {
     for (const name of unchecked) {
       const types = NATIVE_TYPE_MAP[name];
@@ -201,11 +191,9 @@ function makeQuickBtn(label, onClick) {
 // ---- 初始化与监听 ----
 async function loadAndApply() {
   const stored = await chrome.storage.sync.get([
-    STORAGE_ENABLED_KEY, 'rgf.allowedTypes', 'rgf.scope', 'rgf.followers',
+    STORAGE_ENABLED_KEY, 'rgf.scope', 'rgf.followers',
   ]);
   enabled = stored[STORAGE_ENABLED_KEY] !== false;
-  // 白名单语义：null = 从未配置（全部显示）；非 null = 只显示集合内的类型
-  allowedCardTypes = Array.isArray(stored['rgf.allowedTypes']) ? new Set(stored['rgf.allowedTypes']) : null;
   scopeFilter = Object.assign({ onlyFollowers: false, onlyMyRepos: false }, stored['rgf.scope']);
   followersSet = new Set((stored['rgf.followers'] || []).map((u) => u.toLowerCase()));
   loaded = true;
@@ -213,8 +201,7 @@ async function loadAndApply() {
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && (changes['rgf.allowedTypes'] ||
-      changes['rgf.scope'] || changes['rgf.followers'])) {
+  if (area === 'sync' && (changes['rgf.scope'] || changes['rgf.followers'])) {
     loadAndApply();
   } else if (area === 'sync' && changes[STORAGE_ENABLED_KEY]) {
     loadAndApply();
