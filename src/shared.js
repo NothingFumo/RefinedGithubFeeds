@@ -11,6 +11,7 @@ const DIMENSIONS = {
   ACTOR: 'actor',       // 发起者
   REPO: 'repo',         // 仓库全名 owner/repo
   EVENT: 'event',       // 事件类型
+  CARD_TYPE: 'cardType', // 卡片类型（原生 feed 分类：starred/forked/release 等）
   KEYWORD: 'keyword',   // 关键词（条目全部文本）
 };
 
@@ -138,6 +139,8 @@ function matchRule(item, rule) {
       return matchPattern(item.repo, rule.pattern);
     case DIMENSIONS.EVENT:
       return matchPattern(item.event, rule.pattern);
+    case DIMENSIONS.CARD_TYPE:
+      return matchPattern(item.cardType, rule.pattern);
     case DIMENSIONS.KEYWORD:
       return matchPattern(item.text, rule.pattern);
     default:
@@ -150,8 +153,6 @@ function matchPattern(value, pattern) {
   if (!value) return false;
   return globToRegExp(pattern).test(String(value));
 }
-
-// 从条目 DOM 提取过滤四要素；选择器失败时字段为 null，绝不抛错中断渲染
 function extractItem(el) {
   const q = (sel) => el.querySelector(sel);
   const text = (sel) => {
@@ -159,12 +160,22 @@ function extractItem(el) {
     return node ? node.textContent.trim() : null;
   };
   const repoLink = q('a[data-hovercard-type="repository"]');
-  const actorEl = q('[data-testid="actor"]') || q('a[data-hovercard-type="user"]');
+  const actorEl = q('a[data-hovercard-type="user"]');
   const eventBadge = q('[data-test-selector="feed-item-event-type"], [data-ga-click*="feed-item"]');
+  // 卡片类型：真实 DOM 中 data-hydro-view 的 feed_card.card_type（如 STARRED_REPOSITORY）
+  let cardType = null;
+  const hydroEl = el.matches('[data-hydro-view]') ? el : el.querySelector('[data-hydro-view]');
+  if (hydroEl) {
+    try {
+      const payload = JSON.parse(hydroEl.getAttribute('data-hydro-view'));
+      cardType = (payload?.payload?.feed_card?.card_type || null);
+    } catch { /* JSON 损坏时降级为 null，不中断渲染 */ }
+  }
   return {
     actor: actorEl ? actorEl.textContent.replace(/^@\s*/, '').trim() || null : null,
     repo: repoLink ? repoLink.textContent.replace(/\s+/g, '').trim() || null : null,
     event: eventBadge ? eventBadge.getAttribute('data-feed-item-type') || null : null,
+    cardType,
     text: el.textContent.replace(/\s+/g, ' ').trim(),
     el,
   };

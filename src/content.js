@@ -54,17 +54,62 @@ function updateBadge(hiddenCount) {
 }
 
 // ---- 过滤主流程 ----
+
+// 原生筛选面板勾选状态 -> 卡片类型白名单。未勾选的类型一律隐藏。
+// data-name 与 feed_card.card_type 的映射（真实 DOM 抓取）：
+const NATIVE_TYPE_MAP = {
+  Announcements: 'ANNOUNCEMENT',
+  Releases: 'RELEASE',
+  Sponsors: null,            // 无独立 card_type，按关键词降级
+  Stars: 'STARRED_REPOSITORY',
+  Repositories: 'CREATED_REPOSITORY,FORKED_REPOSITORY',
+  RepositoryActivity: 'MERGED_PULL_REQUEST,PULL_REQUEST',
+  Follows: 'FOLLOW',
+  Recommendations: 'RECOMMENDED_REPOSITORY,TRENDING_REPOSITORY,ADDED_TO_LIST,REPOSITORY_RECOMMENDATION',
+};
+
+function readNativeSelection() {
+  const checked = new Set();
+  const unchecked = new Set();
+  for (const input of document.querySelectorAll(
+    '#feed-filter-menu input[data-targets="feed-filter.inputs"][name]')) {
+    (input.checked ? checked : unchecked).add(input.name);
+  }
+  return { checked, unchecked };
+}
+
+// 条目是否被原生勾选状态排除：类型在未勾选分组的映射集合内即排除。
+// Sponsors 等无精确映射的分组退化为关键词匹配（面板描述文本）。
+function excludedByNative(item, unchecked) {
+  if (unchecked.size === 0) return false;
+  for (const name of unchecked) {
+    const types = NATIVE_TYPE_MAP[name];
+    if (!types) continue;
+    for (const t of types.split(',')) {
+      if (t && item.cardType === t) return true;
+    }
+  }
+  return false;
+}
+
 async function applyFilter() {
   const feed = findFeedContainer();
   if (!feed) return;
 
   const items = [...feed.querySelectorAll(ITEM_SELECTOR)];
+  const { unchecked } = readNativeSelection();
   const parsed = items.map((el) => ({ el, item: extractItem(el) }));
 
-  // 裁决始终照常计算（供计数与统计），是否真的隐藏由 suspended 决定
+  // 裁决 = 自定义规则 + 原生勾选联动（未勾选类型的条目直接隐藏，不受 suspended 影响）
   const results = parsed.map(({ el, item }) => {
     const r = adjudicate(item, rules, enabled);
-    return { el, item, hidden: r.hidden && !suspended, wouldHide: r.hidden, matched: r.matchedRules };
+    const nativeExcluded = !suspended && excludedByNative(item, unchecked);
+    return {
+      el, item,
+      hidden: (r.hidden || nativeExcluded) && !suspended,
+      wouldHide: r.hidden || nativeExcluded,
+      matched: r.matchedRules,
+    };
   });
 
   const hiddenCount = results.filter((r) => r.hidden).length;
