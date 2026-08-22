@@ -280,6 +280,7 @@ async function injectPanelBlock() {
     if (host.querySelector(':scope > .' + BLOCK_CLASS)) return;
 
     const block = buildBlock();
+    buildSubFilters(block);
 
     // 挂钩原生 Save / Reset（捕获阶段先于 Catalyst 动作）；找不到 Save 则降级为即改即存
     if (saveBtn) {
@@ -315,6 +316,57 @@ async function injectPanelBlock() {
 function ensureLoaded() {
   if (loaded) return Promise.resolve();
   return loadAndApply();
+}
+
+// ---- 细粒度卡片类型过滤：按 card_type 精确排除，独立于规则与原生勾选 ----
+const CARD_TYPE_DEFS = [
+  ['STARRED_REPOSITORY', 'Star（仓库被 star）'],
+  ['FORKED_REPOSITORY', 'Fork（仓库被 fork）'],
+  ['MERGED_PULL_REQUEST', 'PR 合并'],
+  ['RELEASE', 'Release 发布'],
+  ['ADDED_TO_LIST', '加入 Star List'],
+  ['REPOSITORY_RECOMMENDATION', '算法推荐'],
+  ['TRENDING_REPOSITORY', '趋势榜'],
+  ['PRIVATE_TO_PUBLIC_REPOSITORY', '私有转公开'],
+];
+const SUBFILTER_KEY = 'rgf.excludedTypes'; // 存储排除的 card_type 集合
+
+async function buildSubFilters(block) {
+  const stored = await chrome.storage.sync.get([SUBFILTER_KEY]);
+  const excluded = new Set(stored[SUBFILTER_KEY] || []);
+
+  const section = document.createElement('div');
+  section.className = 'rgf-subfilters';
+  const title = document.createElement('h5');
+  title.className = 'd-flex flex-items-center';
+  title.textContent = '更细过滤（按卡片类型）';
+  section.appendChild(title);
+  const desc = document.createElement('p');
+  desc.className = 'small color-fg-muted mt-1';
+  desc.textContent = '取消勾选即从首页隐藏该类型，立即生效，无需 Save';
+  section.appendChild(desc);
+
+  for (const [type, label] of CARD_TYPE_DEFS) {
+    const rowEl = document.createElement('label');
+    rowEl.className = 'rgf-sub-row d-flex flex-items-center my-1 tmp-px-3 text-normal SelectMenu-item';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.checked = !excluded.has(type); // 勾选=显示
+    chk.dataset.cardType = type;
+    chk.addEventListener('change', async () => {
+      const cur = await chrome.storage.sync.get([SUBFILTER_KEY]);
+      const set = new Set(cur[SUBFILTER_KEY] || []);
+      chk.checked ? set.delete(type) : set.add(type);
+      await chrome.storage.sync.set({ [SUBFILTER_KEY]: [...set] });
+      applyFilter();
+    });
+    const lbl = document.createElement('span');
+    lbl.className = 'ml-2';
+    lbl.textContent = label;
+    rowEl.append(chk, lbl);
+    section.appendChild(rowEl);
+  }
+  block.appendChild(section);
 }
 
 function buildSeparator() {
