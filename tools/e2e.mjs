@@ -219,6 +219,28 @@ async function main() {
   const sepCount = JSON.parse(await evaljs(ws, `document.querySelectorAll('#feed-filter-menu [data-rgf-sep]').length`));
   check('多次重注入后分隔符不堆积', sepCount <= 1, true);
 
+  // ---- 场景 9d：宿主外的孤儿区块/分隔符应被清扫（复现用户页面双份注入）----
+  await evaljs(ws, `(() => {
+    const details = document.getElementById('feed-filter-menu');
+    const clone = document.querySelector('#feed-filter-menu .rgf-filter-block').cloneNode(true);
+    const sep = document.createElement('hr');
+    sep.className = 'rgf-sep';
+    sep.dataset.rgfSep = 'true';
+    details.appendChild(sep);
+    details.appendChild(clone);
+    return 'planted';
+  })()`);
+  await evaljs(ws, `(async () => {
+    for (let i = 0; i < 30; i++) {
+      const orphans = [...document.querySelectorAll('.rgf-filter-block')]
+        .filter(b => !document.querySelector('.pt-2.overflow-auto').contains(b));
+      if (orphans.length === 0) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error('orphans not swept');
+  })()`);
+  check('宿主外孤儿区块被自动清扫', true, true);
+
   await evaljs(ws, `(() => {
     document.querySelector('.rgf-add-row select').value = 'keyword';
     document.querySelector('.rgf-pattern').value = '*release*';
