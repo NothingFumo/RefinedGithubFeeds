@@ -19,9 +19,9 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://github.com/"],
-      "js": ["src/shared.js", "src/content.js"],
-      "css": ["src/content.css"],
+      "matches": ["https://github.com/", "https://github.com/dashboard", "https://github.com/dashboard*"],
+      "js": ["src/shared.js", "src/content.js", "src/panel.js"],
+      "css": ["src/content.css", "src/panel.css"],
       "run_at": "document_idle"
     }
   ],

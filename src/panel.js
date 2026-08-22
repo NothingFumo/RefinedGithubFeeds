@@ -18,7 +18,10 @@ let draftRules = null; // 非 null 时表示有未提交草稿
 
 // 幂等定位面板与注入宿主；turbo 重渲染后由观察器驱动重试
 function findPanel() {
-  const menu = document.getElementById(PANEL_MENU_ID);
+  // 主定位：官方 id；回退：Catalyst 元素（部分布局/改版下 details id 可能缺失）
+  const menu = document.getElementById(PANEL_MENU_ID)
+    || document.querySelector('details:has(> summary [data-toggle-for="feed-filter-menu"])')
+    || document.querySelector('feed-filter[data-target="feed-container.filter"]')?.closest('details');
   if (!menu) return null;
   // 注入宿主 = 可滚动内容区末尾：位于原生分组之后、底部按钮之上
   const host = menu.querySelector('feed-filter .pt-2.overflow-auto')
