@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>RefinedGithubFeeds</title>
+  <style>
+    body { width: 280px; margin: 0; padding: 12px; font: 13px/1.5 system-ui, sans-serif; color: #1f2328; }
+    h1 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 6px; }
+    .row { margin-bottom: 10px; }
+    label { display: block; font-size: 12px; color: #59636e; margin-bottom: 2px; }
+    select, input { width: 100%; box-sizing: border-box; padding: 4px 6px; border: 1px solid #d1d9e0; border-radius: 6px; font-size: 13px; }
+    .switch { display: flex; align-items: center; justify-content: space-between; }
+    button.primary { width: 100%; padding: 5px; background: #1f883d; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+    button.primary:hover { background: #1a7f37; }
+    .mode { font-size: 12px; padding: 4px 8px; border-radius: 6px; background: #ddf4ff; color: #0969da; text-align: center; }
+    .mode.warn { background: #fff8c5; color: #9a6700; }
+    footer { margin-top: 10px; text-align: center; }
+    footer a { color: #0969da; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>
+    <img src="../icons/icon16.png" alt="" />
+    RefinedGithubFeeds
+    <label class="switch" style="margin-left:auto;font-weight:normal;">
+      <input type="checkbox" id="enabled" style="width:auto;" /> 启用
+    </label>
+  </h1>
+
+  <div id="mode" class="mode">加载中…</div>
+
+  <div class="row" style="margin-top:10px;">
+    <label>维度</label>
+    <select id="dimension">
+      <option value="actor">发起者</option>
+      <option value="repo">仓库</option>
+      <option value="event">事件类型</option>
+      <option value="keyword">关键词</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label>匹配值（支持 * 通配符）</label>
+    <input type="text" id="pattern" placeholder="如 torvalds/* 或 *-cli" />
+  </div>
+
+  <div class="row">
+    <label>极性</label>
+    <select id="polarity">
+      <option value="deny">隐藏命中（deny）</option>
+      <option value="allow">仅放行命中（allow）</option>
+    </select>
+  </div>
+
+  <button class="primary" id="add">添加规则</button>
+
+  <footer><a href="#" id="open-options">管理规则 →</a></footer>
+
+  <script src="shared.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
