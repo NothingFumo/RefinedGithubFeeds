@@ -144,6 +144,62 @@ async function main() {
 
   // 恢复启用，避免影响后续场景
   await evaljs(ws, `chrome.storage.sync.set({ 'rgf.enabled': true }); 'set'`);
+
+  // ---- 场景 7：原生 Filter 面板注入区块 ----
+  await evaljs(ws, `(async () => {
+    for (let i = 0; i < 40; i++) {
+      if (document.querySelector('#feed-filter-menu .rgf-filter-block')) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error('panel block never injected');
+  })()`);
+  const s7 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
+    blockExists: !!document.querySelector('#feed-filter-menu .rgf-filter-block'),
+    modeHint: document.querySelector('.rgf-mode-hint') ? document.querySelector('.rgf-mode-hint').textContent : null,
+    ruleRows: document.querySelectorAll('.rgf-rule-row').length,
+    instantSave: document.querySelector('.rgf-filter-block').dataset.instantSave || '',
+  }))())`));
+  check('注入区块存在于面板内', s7.blockExists, true);
+  check('模式提示为白名单模式', s7.modeHint, '白名单模式');
+  check('规则行渲染两条', s7.ruleRows, 2);
+  check('找到原生 Save 未降级', s7.instantSave, '');
+
+  // ---- 场景 8：草稿编辑 -> 原生 Save 提交 -> 过滤联动 ----
+  // 在草稿里添加 keyword deny 规则（模拟在面板表单里操作）
+  await evaljs(ws, `(() => {
+    document.querySelector('.rgf-add-row select').value = 'keyword';
+    document.querySelector('.rgf-pattern').value = '*release*';
+    document.querySelector('.rgf-btn-add').click();
+    return 'added';
+  })()`);
+  const draftMarkShown = await evaljs(ws, `!document.querySelector('.rgf-draft-mark').hidden`);
+  check('草稿标记显示未保存', draftMarkShown, true);
+  // 点击原生 Save
+  await evaljs(ws, `[...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click(); 'saved'`);
+  await new Promise((r) => setTimeout(r, 600));
+  const s8 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
+    stored: (window.__rgfStore['rgf.rules'] || []).map(r => r.dimension + ':' + r.pattern),
+    markHidden: document.querySelector('.rgf-draft-mark').hidden,
+    ruleRows: document.querySelectorAll('.rgf-rule-row').length,
+  }))())`));
+  check('Save 后草稿写入存储', s8.stored.includes('keyword:*release*'), true);
+  check('Save 后草稿标记消失', s8.markHidden, true);
+  check('规则行更新为三条', s8.ruleRows, 3);
+
+  // ---- 场景 9：Reset 还原草稿 ----
+  await evaljs(ws, `(() => {
+    document.querySelector('.rgf-pattern').value = '*sponsor*';
+    document.querySelector('.rgf-btn-add').click();
+    [...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.includes('Reset')).click();
+    return 'reset';
+  })()`);
+  await new Promise((r) => setTimeout(r, 400));
+  const s9 = JSON.parse(await evaljs(ws, `JSON.stringify({
+    markHidden: document.querySelector('.rgf-draft-mark').hidden,
+    ruleRows: document.querySelectorAll('.rgf-rule-row').length,
+  })`));
+  check('Reset 后草稿被丢弃回到已存状态', s9.markHidden, true);
+  check('Reset 后规则回到三条', s9.ruleRows, 3);
   let failed = 0;
   for (const c of CHECKS) {
     if (!c.ok) failed++;

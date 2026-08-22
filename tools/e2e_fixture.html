@@ -49,7 +49,7 @@
 })();
 </script>
 <link rel="stylesheet" href="../src/content.css" />
-<style>body{font:14px system-ui;padding:16px;} article.js-feed-item-component{border:1px solid #d1d9e0;border-radius:6px;padding:12px;margin-bottom:8px;position:relative;}</style>
+<link rel="stylesheet" href="../src/panel.css" />
 </head>
 <body>
 <main>
@@ -72,7 +72,20 @@
     </article>
   </feed-container></div></div>
 </main>
+  <details id="feed-filter-menu">
+    <summary>Filter</summary>
+    <div class="rgf-native-body">
+      <div>Activity you want to see on your feed</div>
+      <label><input type="checkbox" checked /> Announcements</label>
+      <label><input type="checkbox" checked /> Releases</label>
+      <label><input type="checkbox" checked /> Sponsors</label>
+      <label><input type="checkbox" checked /> Stars</label>
+      <button type="button">Save</button>
+      <button type="button">Reset to default</button>
+    </div>
+  </details>
 <script src="../src/shared.js"></script>
 <script src="../src/content.js"></script>
+<script src="../src/panel.js"></script>
 </body>
 </html>
