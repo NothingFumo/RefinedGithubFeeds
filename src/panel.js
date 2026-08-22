@@ -43,15 +43,6 @@ function buildBlock() {
   // 与原生分组完全同一组标记：tmp-px-3（水平）+ mt-2（顶部）
   block.className = `${BLOCK_CLASS} tmp-px-3 mt-2`;
 
-  const title = document.createElement('h5');
-  title.className = 'd-flex flex-items-center';
-  title.textContent = 'RefinedGithubFeeds';
-  block.appendChild(title);
-
-  const desc = document.createElement('p');
-  desc.className = 'small color-fg-muted mt-1';
-  desc.textContent = '按卡片类型过滤动态流';
-  block.appendChild(desc);
 
   return block;
 }
@@ -152,14 +143,6 @@ async function buildSubFilters(block) {
 
   const section = document.createElement('div');
   section.className = 'rgf-subfilters';
-  const title = document.createElement('h5');
-  title.className = 'd-flex flex-items-center';
-  title.textContent = 'RefinedGithubFeeds';
-  section.appendChild(title);
-  const desc = document.createElement('p');
-  desc.className = 'small color-fg-muted mt-1';
-  desc.textContent = '按卡片类型过滤动态流，点 Save 生效';
-  section.appendChild(desc);
 
   // ---- 发起者范围开关（与类型开关交叉生效）----
   const scopeBox = document.createElement('div');
