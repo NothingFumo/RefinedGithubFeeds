@@ -8,30 +8,28 @@ const BLOCK_CLASS = 'rgf-filter-block';
 let draftRules = null; // 非 null 时表示有未提交草稿
 
 // 真实结构（登录态抓取）：
-//   <details id="feed-filter-menu"><summary>Filter</summary>
+//   <details-menu class="SelectMenu-modal ... feed-filter-menu-body position-absolute">
 //     <feed-filter data-target="feed-container.filter">
 //       <div class="SelectMenu-header">…</div>
-//       <div class="pt-2 overflow-auto">…分组与复选框…</div>
+//       <div class="pt-2 overflow-auto">…原生分组… <hr> StarredRelationships 组 …</div>
 //       <hr><div class="p-2 d-flex flex-justify-end">Reset/Save</div>
 //     </feed-filter>
-//   </details>
+//   </details-menu>
 
-// 幂等定位面板与注入宿主；turbo 重渲染后由观察器驱动重试
+// 幂等定位注入宿主；锚定最稳定的 Catalyst 元素 feed-filter，
+// 不依赖外层标签名（真实结构为 details-menu 而非 details）与可漂移的 id
 function findPanel() {
-  // 主定位：官方 id；回退：Catalyst 元素（部分布局/改版下 details id 可能缺失）
-  const menu = document.getElementById(PANEL_MENU_ID)
-    || document.querySelector('details:has(> summary [data-toggle-for="feed-filter-menu"])')
-    || document.querySelector('feed-filter[data-target="feed-container.filter"]')?.closest('details');
-  if (!menu) return null;
-  // 注入宿主 = 可滚动内容区末尾：位于原生分组之后、底部按钮之上
-  const host = menu.querySelector('feed-filter .pt-2.overflow-auto')
-    || menu.querySelector('feed-filter')
-    || menu;
-  const saveBtn = menu.querySelector('button[data-target="feed-filter.applyButton"]')
-    || findButtonByText(menu, 'save');
-  const resetBtn = menu.querySelector('button[data-action~="feed-filter#resetFilterToDefault"]')
-    || findButtonByText(menu, 'reset');
-  return { menu, host, saveBtn, resetBtn };
+  const feedFilter = document.querySelector('feed-filter[data-target="feed-container.filter"]');
+  if (!feedFilter) return null;
+  // 注入宿主 = 可滚动内容区：原生分组、StarredRelationships 都在其内
+  const host = feedFilter.querySelector('.pt-2.overflow-auto')
+    || feedFilter.querySelector('[class*="overflow-auto"]');
+  if (!host) return null;
+  const saveBtn = feedFilter.querySelector('button[data-target="feed-filter.applyButton"]')
+    || findButtonByText(feedFilter, 'save');
+  const resetBtn = feedFilter.querySelector('button[data-action~="feed-filter#resetFilterToDefault"]')
+    || findButtonByText(feedFilter, 'reset');
+  return { host, saveBtn, resetBtn };
 }
 
 function findButtonByText(scope, keyword) {
@@ -46,9 +44,8 @@ const DIM_LABELS = { actor: '发起者', repo: '仓库', event: '事件', keywor
 
 function buildBlock() {
   const block = document.createElement('div');
-  // 布局完全自持：不依赖 GitHub 工具类（tmp-* 为内部临时类，定义随版本漂移），
-  // 间距用 Primer 变量取值，视觉与原生一致但不受其改动影响
-  block.className = BLOCK_CLASS;
+  // 与原生分组完全同一组标记：tmp-px-3（水平）+ mt-2（顶部），真实页面必有定义
+  block.className = `${BLOCK_CLASS} tmp-px-3 mt-2`;
 
   const title = document.createElement('div');
   title.className = 'rgf-block-title';
@@ -277,7 +274,7 @@ async function injectPanelBlock() {
     }
 
     // 组间分隔 + 区块；注入前清理残留，保证任何重渲染路径下不堆积
-    for (const stale of host.querySelectorAll(':scope > hr.rgf-sep')) stale.remove();
+    for (const stale of host.querySelectorAll(':scope > hr[data-rgf-sep]')) stale.remove();
     host.appendChild(buildSeparator());
     host.appendChild(block);
     renderRuleList(block);
@@ -293,7 +290,7 @@ function ensureLoaded() {
 
 function buildSeparator() {
   const sep = document.createElement('hr');
-  sep.className = 'rgf-sep';
+  sep.className = 'mb-0 tmp-mx-3';   // 原生组间分隔的准确标记
   sep.dataset.rgfSep = 'true';
   return sep;
 }
