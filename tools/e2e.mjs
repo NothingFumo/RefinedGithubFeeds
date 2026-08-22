@@ -153,16 +153,35 @@ async function main() {
     }
     throw new Error('panel block never injected');
   })()`);
-  const s7 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
-    blockExists: !!document.querySelector('#feed-filter-menu .rgf-filter-block'),
-    hostIsScrollArea: !!document.querySelector('#feed-filter-menu feed-filter .pt-2.overflow-auto > .rgf-filter-block'),
-    modeHint: document.querySelector('.rgf-mode-hint') ? document.querySelector('.rgf-mode-hint').textContent : null,
-    ruleRows: document.querySelectorAll('.rgf-rule-row').length,
-    instantSave: document.querySelector('.rgf-filter-block').dataset.instantSave || '',
-  }))())`));
+  const s7 = JSON.parse(await evaljs(ws, `JSON.stringify((() => {
+    const block = document.querySelector('#feed-filter-menu .rgf-filter-block');
+    const nativeGroup = document.querySelector('#feed-filter-menu .tmp-px-3.mt-2:not(.rgf-filter-block)');
+    const scrollArea = document.querySelector('#feed-filter-menu feed-filter .pt-2.overflow-auto');
+    const addRow = document.querySelector('.rgf-add-row');
+    const b = block.getBoundingClientRect();
+    const n = nativeGroup ? nativeGroup.getBoundingClientRect() : null;
+    const a = addRow.getBoundingClientRect();
+    return {
+      blockExists: !!block,
+      hostIsScrollArea: !!document.querySelector('#feed-filter-menu feed-filter .pt-2.overflow-auto > .rgf-filter-block'),
+      modeHint: document.querySelector('.rgf-mode-hint') ? document.querySelector('.rgf-mode-hint').textContent : null,
+      ruleRows: document.querySelectorAll('.rgf-rule-row').length,
+      instantSave: block.dataset.instantSave || '',
+      // 几何对齐度量：区块与原生分组的左右内边距起点应一致
+      blockLeft: Math.round(b.left),
+      nativeLeft: n ? Math.round(n.left) : null,
+      blockRight: Math.round(b.right),
+      nativeRight: n ? Math.round(n.right) : null,
+      noHorizontalOverflow: b.right <= scrollArea.getBoundingClientRect().right + 1 && b.left >= scrollArea.getBoundingClientRect().left - 1,
+      addRowWithinBlock: a.right <= b.right + 1 && a.left >= b.left - 1,
+    };
+  })())`));
   check('注入区块存在于面板内', s7.blockExists, true);
   check('区块落在可滚动内容区内', s7.hostIsScrollArea, true);
-  check('找到原生 Save 未降级', s7.instantSave, '');
+  check('区块与原生分组左缘对齐', s7.nativeLeft !== null && Math.abs(s7.blockLeft - s7.nativeLeft) <= 2, true);
+  check('区块与原生分组右缘对齐', s7.nativeRight !== null && Math.abs(s7.blockRight - s7.nativeRight) <= 2, true);
+  check('区块无水平溢出', s7.noHorizontalOverflow, true);
+  check('表单行未越出区块', s7.addRowWithinBlock, true);
 
   // ---- 场景 8：草稿编辑 -> 原生 Save 提交 -> 过滤联动 ----
   // 在草稿里添加 keyword deny 规则（模拟在面板表单里操作）
