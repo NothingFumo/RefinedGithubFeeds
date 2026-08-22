@@ -56,17 +56,21 @@ function updateBadge(hiddenCount) {
 // ---- 过滤主流程 ----
 
 // 原生筛选面板勾选状态 -> 卡片类型白名单。未勾选的类型一律隐藏。
-// data-name 与 feed_card.card_type 的映射（真实 DOM 抓取）：
+// data-name 与 feed_card.card_type 的映射（用户页面 2.5MB 实抓校准）：
 const NATIVE_TYPE_MAP = {
   Announcements: 'ANNOUNCEMENT',
   Releases: 'RELEASE',
   Sponsors: null,            // 无独立 card_type，按关键词降级
   Stars: 'STARRED_REPOSITORY',
-  Repositories: 'CREATED_REPOSITORY,FORKED_REPOSITORY',
+  Repositories: 'FORKED_REPOSITORY,PRIVATE_TO_PUBLIC_REPOSITORY', // 实抓无 CREATED_*
   RepositoryActivity: 'MERGED_PULL_REQUEST,PULL_REQUEST',
   Follows: 'FOLLOW',
-  Recommendations: 'RECOMMENDED_REPOSITORY,TRENDING_REPOSITORY,ADDED_TO_LIST,REPOSITORY_RECOMMENDATION',
+  Recommendations: 'REPOSITORY_RECOMMENDATION,TRENDING_REPOSITORY,ADDED_TO_LIST',
 };
+
+
+// 细粒度排除集（panel.js 更细过滤写入 rgf.excludedTypes）
+let excludedCardTypes = new Set();
 
 function readNativeSelection() {
   const checked = new Set();
@@ -78,16 +82,14 @@ function readNativeSelection() {
   return { checked, unchecked };
 }
 
-// 条目是否被原生勾选状态排除：类型在未勾选分组的映射集合内即排除。
-// Sponsors 等无精确映射的分组退化为关键词匹配（面板描述文本）。
-function excludedByNative(item, unchecked) {
-  if (unchecked.size === 0) return false;
+// 条目是否被排除：细粒度排除集命中 或 原生未勾选分组的映射类型命中
+function isExcluded(item, unchecked) {
+  if (item.cardType && excludedCardTypes.has(item.cardType)) return true;
+  if (unchecked.size === 0 || !item.cardType) return false;
   for (const name of unchecked) {
     const types = NATIVE_TYPE_MAP[name];
     if (!types) continue;
-    for (const t of types.split(',')) {
-      if (t && item.cardType === t) return true;
-    }
+    if (types.split(',').includes(item.cardType)) return true;
   }
   return false;
 }
@@ -100,14 +102,15 @@ async function applyFilter() {
   const { unchecked } = readNativeSelection();
   const parsed = items.map((el) => ({ el, item: extractItem(el) }));
 
-  // 裁决 = 自定义规则 + 原生勾选联动（未勾选类型的条目直接隐藏，不受 suspended 影响）
+  // 裁决 = 自定义规则 + 原生勾选联动 + 细粒度类型排除
+  //（后两者不受 suspended 影响：它们是用户明确的类型偏好）
   const results = parsed.map(({ el, item }) => {
     const r = adjudicate(item, rules, enabled);
-    const nativeExcluded = !suspended && excludedByNative(item, unchecked);
+    const excluded = !suspended && isExcluded(item, unchecked);
     return {
       el, item,
-      hidden: (r.hidden || nativeExcluded) && !suspended,
-      wouldHide: r.hidden || nativeExcluded,
+      hidden: (r.hidden || excluded) && !suspended,
+      wouldHide: r.hidden || excluded,
       matched: r.matchedRules,
     };
   });
@@ -237,7 +240,7 @@ async function addRule(dimension, pattern) {
 
 // ---- 初始化与监听 ----
 async function loadAndApply() {
-  const stored = await chrome.storage.sync.get([STORAGE_KEY, STORAGE_ENABLED_KEY, 'rgf.ruleHits']);
+  const stored = await chrome.storage.sync.get([STORAGE_KEY, STORAGE_ENABLED_KEY, 'rgf.ruleHits', 'rgf.excludedTypes']);
   const merged = normalizeRules(stored[STORAGE_KEY]);
   const hits = stored['rgf.ruleHits'] || {};
   for (const rule of merged) {
@@ -247,18 +250,18 @@ async function loadAndApply() {
   }
   rules = merged;
   enabled = stored[STORAGE_ENABLED_KEY] !== false;
+  excludedCardTypes = new Set(stored['rgf.excludedTypes'] || []);
   loaded = true;
   applyFilter();
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes[STORAGE_KEY]) {
+  if (area === 'sync' && (changes[STORAGE_KEY] || changes['rgf.excludedTypes'])) {
     loadAndApply();
   } else if (area === 'sync' && changes[STORAGE_ENABLED_KEY]) {
     loadAndApply();
   }
 });
-
 getBadge().addEventListener('click', () => {
   if (!enabled) {
     chrome.storage.sync.set({ [STORAGE_ENABLED_KEY]: true });
