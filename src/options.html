@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>RefinedGithubFeeds - 规则管理</title>
+  <style>
+    body { margin: 0; padding: 24px; font: 14px/1.6 system-ui, sans-serif; color: #1f2328; background: #f6f8fa; }
+    .card { max-width: 960px; margin: 0 auto; background: #fff; border: 1px solid #d1d9e0; border-radius: 8px; padding: 20px; }
+    h1 { font-size: 18px; margin: 0 0 16px; display: flex; align-items: center; gap: 8px; }
+    h1 img { width: 24px; height: 24px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 6px 10px; border-bottom: 1px solid #d1d9e0; text-align: left; vertical-align: middle; }
+    th { color: #59636e; font-weight: 600; background: #f6f8fa; }
+    td input[type="text"] { width: 100%; box-sizing: border-box; padding: 3px 6px; border: 1px solid #d1d9e0; border-radius: 6px; }
+    select, button { padding: 3px 8px; border: 1px solid #d1d9e0; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    button.danger { color: #cf222e; }
+    button:hover { border-color: #0969da; }
+    .toolbar { display: flex; gap: 8px; margin-top: 16px; align-items: center; flex-wrap: wrap; }
+    .toolbar input[type="file"] { display: none; }
+    .empty { color: #59636e; text-align: center; padding: 24px 0; }
+    .hits { color: #59636e; font-variant-numeric: tabular-nums; }
+    a { color: #0969da; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1><img src="../icons/icon48.png" alt="" /> RefinedGithubFeeds 规则管理</h1>
+
+    <table>
+      <thead>
+        <tr>
+          <th>启用</th><th>维度</th><th>匹配值</th><th>极性</th><th>命中统计</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="rules"></tbody>
+    </table>
+    <div id="empty" class="empty" hidden>暂无规则。在 GitHub 首页悬停动态条目添加，或在下方手动新建。</div>
+
+    <div class="toolbar">
+      <select id="dimension">
+        <option value="actor">发起者</option>
+        <option value="repo">仓库</option>
+        <option value="event">事件类型</option>
+        <option value="keyword">关键词</option>
+      </select>
+      <input type="text" id="pattern" placeholder="匹配值，支持 * 通配符，如 torvalds/*" style="flex:1;" />
+      <select id="polarity">
+        <option value="deny">隐藏命中（deny）</option>
+        <option value="allow">仅放行命中（allow）</option>
+      </select>
+      <button id="add">新建</button>
+      <span style="flex:1;"></span>
+      <button id="export">导出 JSON</button>
+      <button id="import-btn">导入 JSON</button>
+      <input type="file" id="import" accept=".json,application/json" />
+      <a href="#" id="clear" style="color:#cf222e;">清空全部</a>
+    </div>
+  </div>
+
+  <script src="shared.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
