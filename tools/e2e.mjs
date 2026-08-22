@@ -165,6 +165,8 @@ async function main() {
       instantSave: block.dataset.instantSave || '',
       subFilters: !!block.querySelector('.rgf-subfilters'),
       subChecks: block.querySelectorAll('.rgf-subfilters input[data-card-type]').length,
+      scopeToggles: block.querySelectorAll('input[data-scope]').length,
+      groups: [...block.querySelectorAll('.rgf-group-title')].map(g => g.textContent),
       // 几何对齐度量：区块与原生分组的左右内边距起点应一致
       blockLeft: Math.round(b.left),
       nativeLeft: n ? Math.round(n.left) : null,
@@ -177,6 +179,8 @@ async function main() {
   check('区块无水平溢出', s7.noHorizontalOverflow, true);
   check('更细过滤分组已注入', s7.subFilters, true);
   check('八种卡片类型开关齐全', s7.subChecks, 8);
+  check('两个发起者范围开关齐全', s7.scopeToggles, 2);
+  check('类型开关按语义分三组', s7.groups, ['社交动态', '仓库活动', '发现内容']);
 
 
   // ---- 场景 9b：id 缺失时经 Catalyst 回退仍能注入 ----
