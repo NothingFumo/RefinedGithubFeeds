@@ -103,7 +103,7 @@ function buildBlock() {
   modeHint.className = 'rgf-mode-hint';
   footRow.appendChild(modeHint);
   const spacer = document.createElement('span');
-  spacer.style.flex = '1';
+  spacer.className = 'rgf-foot-spacer';
   footRow.appendChild(spacer);
   const manageLink = document.createElement('a');
   manageLink.href = '#';
@@ -266,6 +266,10 @@ async function injectPanelBlock() {
     resetBtn.addEventListener('click', () => { discardDraft(); }, true);
   }
 
+  // 组间分隔：与原生分组一致使用 hr（真实 DOM 中 Events 分组后即为 hr.mb-0.tmp-mx-3）
+  const sep = document.createElement('hr');
+  sep.className = 'mb-0 tmp-mx-3';
+  host.appendChild(sep);
   host.appendChild(block);
   renderRuleList(block);
 }

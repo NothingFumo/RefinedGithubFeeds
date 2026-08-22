@@ -1,18 +1,10 @@
 /* RefinedGithubFeeds - 原生筛选面板注入区块（贴近 Primer 风格） */
-/* 水平节奏由原生 tmp-px-3 类控制（见 panel.js buildBlock），此处不再硬编码 */
+/* 水平节奏由原生 tmp-px-3 类控制（见 panel.js buildBlock）；
+   组间分隔使用原生 hr 元素（见 panel.js injectPanelBlock），不再自绘 */
 
 .rgf-filter-block {
-  padding-bottom: 12px;
   font-size: 12px;
   color: var(--color-fg-muted, #59636e);
-}
-/* 分组分隔线：通栏到面板边缘，与原生 hr 一致 */
-.rgf-filter-block::before {
-  content: '';
-  display: block;
-  height: 1px;
-  background: var(--color-border-muted, #d1d9e0b3);
-  margin: 4px calc(var(--tmp-px-3, 16px) * -1) 10px;
 }
 
 .rgf-block-title {
@@ -21,17 +13,11 @@
   color: var(--color-fg-default, #1f2328);
 }
 
-.rgf-block-desc {
-  margin-top: 2px;
-}
-
 .rgf-rule-list {
   margin-top: 6px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 180px;
-  overflow-y: auto;
 }
 
 .rgf-rule-row {
@@ -134,6 +120,10 @@
 
 .rgf-mode-hint {
   color: var(--color-accent-fg, #0969da);
+}
+
+.rgf-foot-spacer {
+  flex: 1;
 }
 
 .rgf-manage-link {
