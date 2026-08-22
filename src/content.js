@@ -87,9 +87,11 @@ function readNativeSelection() {
 
 // 条目是否被排除：细粒度类型白名单（只显示勾选的类型）/ 原生未勾选分组 / 发起者范围
 function isExcluded(item, unchecked) {
-  // 细粒度开关为白名单语义：只要存在勾选，未勾选的类型一律隐藏
-  if (allowedCardTypes !== null) {
-    if (!item.cardType || !allowedCardTypes.has(item.cardType)) return true;
+  // 细粒度开关为白名单语义：勾选的类型显示。
+  // 无 cardType 的条目（无法归类）不参与白名单过滤，始终显示——
+  // 避免动态插入/未知类型条目被误杀
+  if (allowedCardTypes !== null && item.cardType) {
+    if (!allowedCardTypes.has(item.cardType)) return true;
   }
   if (unchecked.size > 0 && item.cardType) {
     for (const name of unchecked) {
