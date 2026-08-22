@@ -131,48 +131,152 @@ const CARD_TYPE_DEFS = [
 ];
 const SUBFILTER_KEY = 'rgf.excludedTypes'; // 存储排除的 card_type 集合
 
-let draftExcluded = null;   // 细粒度过滤草稿：与规则草稿同随原生 Save 提交
+let draftExcluded = null;   // 细粒度过滤草稿：与范围开关同随原生 Save 提交
 let subFilterBase = null;   // 已提交的排除集合基线
+let scopeBase = null;       // 已提交的范围开关基线
+const FOLLOWERS_KEY = 'rgf.followers';
+const FOLLOWERS_AT_KEY = 'rgf.followersAt';
+const SCOPE_KEY = 'rgf.scope';
+const FOLLOWERS_TTL = 24 * 60 * 60 * 1000; // 24h
+
+let scopeState = null;      // { onlyFollowers, onlyMyRepos } 草稿
+let followersCache = [];    // 当前已缓存名单（用于显示数量）
+
 async function buildSubFilters(block) {
-  const stored = await chrome.storage.sync.get([SUBFILTER_KEY]);
+  const stored = await chrome.storage.sync.get([SUBFILTER_KEY, SCOPE_KEY, FOLLOWERS_KEY, FOLLOWERS_AT_KEY]);
   subFilterBase = new Set(stored[SUBFILTER_KEY] || []);
   if (draftExcluded === null) draftExcluded = new Set(subFilterBase);
+  scopeState = Object.assign({ onlyFollowers: false, onlyMyRepos: false }, stored[SCOPE_KEY]);
+  followersCache = stored[FOLLOWERS_KEY] || [];
+  const followersAt = stored[FOLLOWERS_AT_KEY] || 0;
 
   const section = document.createElement('div');
   section.className = 'rgf-subfilters';
   const title = document.createElement('h5');
   title.className = 'd-flex flex-items-center';
-  title.textContent = '更细过滤（按卡片类型）';
+  title.textContent = 'RefinedGithubFeeds';
   section.appendChild(title);
   const desc = document.createElement('p');
   desc.className = 'small color-fg-muted mt-1';
-  desc.textContent = '取消勾选即隐藏该类型，点 Save 生效';
+  desc.textContent = '按卡片类型过滤动态流，点 Save 生效';
   section.appendChild(desc);
 
-  for (const [type, label] of CARD_TYPE_DEFS) {
+  // ---- 发起者范围开关（与类型开关交叉生效）----
+  const scopeBox = document.createElement('div');
+  scopeBox.className = 'rgf-scope-box my-2';
+  for (const [key, label, hint] of [
+    ['onlyMyRepos', '只看我仓库的动态', '条目仓库属于当前账号'],
+    ['onlyFollowers', `只看关注者的动态（${followersCache.length} 人）`, '发起者在你的关注者名单中'],
+  ]) {
     const rowEl = document.createElement('label');
     rowEl.className = 'rgf-sub-row d-flex flex-items-center my-1 tmp-px-3 text-normal SelectMenu-item';
     const chk = document.createElement('input');
     chk.type = 'checkbox';
-    chk.checked = !draftExcluded.has(type); // 勾选=显示
-    chk.dataset.cardType = type;
+    chk.checked = !!scopeState[key];
+    chk.dataset.scope = key;
+    chk.title = hint;
     chk.addEventListener('change', () => {
-      chk.checked ? draftExcluded.delete(type) : draftExcluded.add(type);
+      scopeState[key] = chk.checked;
       markDraftDirty(block);
     });
     const lbl = document.createElement('span');
     lbl.className = 'ml-2';
     lbl.textContent = label;
     rowEl.append(chk, lbl);
-    section.appendChild(rowEl);
+    scopeBox.appendChild(rowEl);
+  }
+  // 关注者名单刷新行：过期时间 + 手动刷新按钮
+  const refreshRow = document.createElement('div');
+  refreshRow.className = 'small color-fg-muted tmp-px-3 pb-2 d-flex flex-items-center';
+  const age = Date.now() - followersAt;
+  const stale = !followersAt || age > FOLLOWERS_TTL;
+  refreshRow.textContent = stale ? '关注者名单未缓存或已过期' : `关注者名单 ${Math.ceil(age / 3600000)} 小时前更新`;
+  const refreshBtn = document.createElement('button');
+  refreshBtn.type = 'button';
+  refreshBtn.className = 'Button Button--invisible Button--small ml-auto rgf-refresh-btn';
+  refreshBtn.textContent = '刷新名单';
+  refreshBtn.addEventListener('click', async () => {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = '抓取中…';
+    try {
+      const n = await fetchFollowers();
+      refreshRow.firstChild?.remove();
+      refreshRow.insertBefore(document.createTextNode(`关注者名单刚刚更新（${n} 人）`), refreshBtn);
+      await chrome.storage.sync.get([FOLLOWERS_AT_KEY]).then(() => {});
+      loadAndApply();
+    } catch (e) {
+      refreshBtn.textContent = '抓取失败';
+    }
+    setTimeout(() => { refreshBtn.disabled = false; refreshBtn.textContent = '刷新名单'; }, 3000);
+  });
+  refreshRow.appendChild(refreshBtn);
+  scopeBox.appendChild(refreshRow);
+  section.appendChild(scopeBox);
+
+  // ---- 卡片类型开关（按语义分组展示）----
+  const groups = [
+    ['社交动态', ['STARRED_REPOSITORY', 'FORKED_REPOSITORY']],
+    ['仓库活动', ['MERGED_PULL_REQUEST', 'RELEASE', 'PRIVATE_TO_PUBLIC_REPOSITORY']],
+    ['发现内容', ['ADDED_TO_LIST', 'REPOSITORY_RECOMMENDATION', 'TRENDING_REPOSITORY']],
+  ];
+  for (const [groupLabel, types] of groups) {
+    const gTitle = document.createElement('div');
+    gTitle.className = 'rgf-group-title small text-bold color-fg-default tmp-px-3 mt-2';
+    gTitle.textContent = groupLabel;
+    section.appendChild(gTitle);
+    for (const [type, label] of CARD_TYPE_DEFS.filter(([t]) => types.includes(t))) {
+      const rowEl = document.createElement('label');
+      rowEl.className = 'rgf-sub-row d-flex flex-items-center my-1 tmp-px-3 text-normal SelectMenu-item';
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = !draftExcluded.has(type); // 勾选=显示
+      chk.dataset.cardType = type;
+      chk.addEventListener('change', () => {
+        chk.checked ? draftExcluded.delete(type) : draftExcluded.add(type);
+        markDraftDirty(block);
+      });
+      const lbl = document.createElement('span');
+      lbl.className = 'ml-2';
+      lbl.textContent = label;
+      rowEl.append(chk, lbl);
+      section.appendChild(rowEl);
+    }
   }
   block.appendChild(section);
 }
 
+// 抓取关注者名单：解析 github.com/<user>?tab=followers 分页页面
+async function fetchFollowers() {
+  const me = currentUser();
+  if (!me) throw new Error('未登录');
+  const names = [];
+  for (let page = 1; page <= 10; page++) {
+    const res = await fetch(`https://github.com/${me}?tab=followers&page=${page}`, {
+      credentials: 'same-origin',
+    });
+    if (!res.ok) break;
+    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+    const found = [...doc.querySelectorAll('[data-hovercard-type="user"], a.d-inline-block')
+    ].map((a) => a.getAttribute('href')).filter((h) => h && /^\/[A-Za-z0-9-]+$/.test(h))
+      .map((h) => h.slice(1));
+    names.push(...found);
+    // 无"下一页"则停止
+    if (!doc.querySelector('.pagination a[rel="next"], a.next_page')) break;
+    if (found.length === 0) break;
+  }
+  const unique = [...new Set(names)];
+  await chrome.storage.sync.set({ [FOLLOWERS_KEY]: unique, [FOLLOWERS_AT_KEY]: Date.now() });
+  return unique.length;
+}
+
+function scopeChanged() {
+  return JSON.stringify(scopeState) !== JSON.stringify(scopeBase);
+}
+
 function subFiltersChanged() {
-  return draftExcluded !== null &&
+  return (draftExcluded !== null &&
     (draftExcluded.size !== subFilterBase.size ||
-     [...draftExcluded].some((t) => !subFilterBase.has(t)));
+     [...draftExcluded].some((t) => !subFilterBase.has(t)))) || scopeChanged();
 }
 
 async function commitSubFilters() {
@@ -180,8 +284,10 @@ async function commitSubFilters() {
     discardSubDraft();
     return false;
   }
-  await chrome.storage.sync.set({ [SUBFILTER_KEY]: [...draftExcluded] });
+  const update = { [SUBFILTER_KEY]: [...draftExcluded], [SCOPE_KEY]: scopeState };
+  await chrome.storage.sync.set(update);
   subFilterBase = new Set(draftExcluded);
+  scopeBase = { ...scopeState };
   discardSubDraft();
   applyFilter();
   return true;
@@ -191,8 +297,8 @@ function discardSubDraft() {
   if (draftExcluded !== null) {
     draftExcluded = new Set(subFilterBase);
   }
+  if (scopeBase) scopeState = { ...scopeBase };
 }
-
 function buildSeparator() {
   const sep = document.createElement('hr');
   sep.className = 'mb-0 tmp-mx-3';   // 原生组间分隔的准确标记
