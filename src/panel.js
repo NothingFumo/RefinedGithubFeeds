@@ -120,9 +120,9 @@ const CARD_TYPE_DEFS = [
   ['TRENDING_REPOSITORY', '趋势榜'],
   ['PRIVATE_TO_PUBLIC_REPOSITORY', '私有转公开'],
 ];
-const SUBFILTER_KEY = 'rgf.excludedTypes'; // 存储排除的 card_type 集合
+const SUBFILTER_KEY = 'rgf.allowedTypes'; // 白名单：勾选的 card_type 才显示
 
-let draftExcluded = null;   // 细粒度过滤草稿：与范围开关同随原生 Save 提交
+let draftAllowed = null;    // 白名单草稿：与范围开关同随原生 Save 提交
 let subFilterBase = null;   // 已提交的排除集合基线
 let scopeBase = null;       // 已提交的范围开关基线
 const FOLLOWERS_KEY = 'rgf.followers';
@@ -135,8 +135,8 @@ let followersCache = [];    // 当前已缓存名单（用于显示数量）
 
 async function buildSubFilters(block) {
   const stored = await chrome.storage.sync.get([SUBFILTER_KEY, SCOPE_KEY, FOLLOWERS_KEY, FOLLOWERS_AT_KEY]);
-  subFilterBase = new Set(stored[SUBFILTER_KEY] || []);
-  if (draftExcluded === null) draftExcluded = new Set(subFilterBase);
+  subFilterBase = Array.isArray(stored[SUBFILTER_KEY]) ? new Set(stored[SUBFILTER_KEY]) : null;
+  if (draftAllowed === null) draftAllowed = subFilterBase ? new Set(subFilterBase) : new Set();
   scopeState = Object.assign({ onlyFollowers: false, onlyMyRepos: false }, stored[SCOPE_KEY]);
   followersCache = stored[FOLLOWERS_KEY] || [];
   const followersAt = stored[FOLLOWERS_AT_KEY] || 0;
@@ -212,10 +212,10 @@ async function buildSubFilters(block) {
       rowEl.className = 'rgf-sub-row d-flex flex-items-center my-1 tmp-px-3 text-normal SelectMenu-item';
       const chk = document.createElement('input');
       chk.type = 'checkbox';
-      chk.checked = !draftExcluded.has(type); // 勾选=显示
+      chk.checked = draftAllowed ? draftAllowed.has(type) : true; // 勾选=显示
       chk.dataset.cardType = type;
       chk.addEventListener('change', () => {
-        chk.checked ? draftExcluded.delete(type) : draftExcluded.add(type);
+        if (chk.checked) { draftAllowed.add(type); } else { draftAllowed.delete(type); }
         markDraftDirty(block);
       });
       const lbl = document.createElement('span');
@@ -257,9 +257,10 @@ function scopeChanged() {
 }
 
 function subFiltersChanged() {
-  return (draftExcluded !== null &&
-    (draftExcluded.size !== subFilterBase.size ||
-     [...draftExcluded].some((t) => !subFilterBase.has(t)))) || scopeChanged();
+  if (scopeChanged()) return true;
+  if (subFilterBase === null) return false; // 从未配置过则无变化
+  const base = subFilterBase, draft = draftAllowed;
+  return draft.size !== base.size || [...draft].some((t) => !base.has(t)) || [...base].some((t) => !draft.has(t));
 }
 
 async function commitSubFilters() {
@@ -267,9 +268,9 @@ async function commitSubFilters() {
     discardSubDraft();
     return false;
   }
-  const update = { [SUBFILTER_KEY]: [...draftExcluded], [SCOPE_KEY]: scopeState };
+  const update = { [SUBFILTER_KEY]: [...draftAllowed], [SCOPE_KEY]: scopeState };
   await chrome.storage.sync.set(update);
-  subFilterBase = new Set(draftExcluded);
+  subFilterBase = new Set(draftAllowed);
   scopeBase = { ...scopeState };
   discardSubDraft();
   applyFilter();
@@ -277,8 +278,8 @@ async function commitSubFilters() {
 }
 
 function discardSubDraft() {
-  if (draftExcluded !== null) {
-    draftExcluded = new Set(subFilterBase);
+  if (draftAllowed !== null && subFilterBase !== null) {
+    draftAllowed = new Set(subFilterBase);
   }
   if (scopeBase) scopeState = { ...scopeBase };
 }

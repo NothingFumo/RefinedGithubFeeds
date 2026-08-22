@@ -69,8 +69,8 @@ const NATIVE_TYPE_MAP = {
 };
 
 
-// 细粒度排除集（panel.js 更细过滤写入 rgf.excludedTypes）
-let excludedCardTypes = new Set();
+// 细粒度类型白名单（panel.js 更细过滤勾选项写入 rgf.allowedTypes）
+let allowedCardTypes = null;
 // 发起者范围开关：rgf.scope = { onlyFollowers: bool, onlyMyRepos: bool }
 let scopeFilter = { onlyFollowers: false, onlyMyRepos: false };
 // 关注者名单缓存（panel.js 抓取写入 rgf.followers + rgf.followersAt）
@@ -86,9 +86,12 @@ function readNativeSelection() {
   return { checked, unchecked };
 }
 
-// 条目是否被排除：细粒度排除集 / 原生未勾选分组 / 发起者范围 三方判定
+// 条目是否被排除：细粒度类型白名单（只显示勾选的类型）/ 原生未勾选分组 / 发起者范围
 function isExcluded(item, unchecked) {
-  if (item.cardType && excludedCardTypes.has(item.cardType)) return true;
+  // 细粒度开关为白名单语义：只要存在勾选，未勾选的类型一律隐藏
+  if (allowedCardTypes !== null) {
+    if (!item.cardType || !allowedCardTypes.has(item.cardType)) return true;
+  }
   if (unchecked.size > 0 && item.cardType) {
     for (const name of unchecked) {
       const types = NATIVE_TYPE_MAP[name];
@@ -248,7 +251,7 @@ function makeQuickBtn(label, onClick) {
 // ---- 初始化与监听 ----
 async function loadAndApply() {
   const stored = await chrome.storage.sync.get([
-    STORAGE_KEY, STORAGE_ENABLED_KEY, 'rgf.ruleHits', 'rgf.excludedTypes',
+    STORAGE_KEY, STORAGE_ENABLED_KEY, 'rgf.ruleHits', 'rgf.allowedTypes',
     'rgf.scope', 'rgf.followers',
   ]);
   const merged = normalizeRules(stored[STORAGE_KEY]);
@@ -260,7 +263,8 @@ async function loadAndApply() {
   }
   rules = merged;
   enabled = stored[STORAGE_ENABLED_KEY] !== false;
-  excludedCardTypes = new Set(stored['rgf.excludedTypes'] || []);
+  // 白名单语义：null = 从未配置（全部显示）；非 null = 只显示集合内的类型
+  allowedCardTypes = Array.isArray(stored['rgf.allowedTypes']) ? new Set(stored['rgf.allowedTypes']) : null;
   scopeFilter = Object.assign({ onlyFollowers: false, onlyMyRepos: false }, stored['rgf.scope']);
   followersSet = new Set((stored['rgf.followers'] || []).map((u) => u.toLowerCase()));
   loaded = true;
@@ -268,7 +272,7 @@ async function loadAndApply() {
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && (changes[STORAGE_KEY] || changes['rgf.excludedTypes'] ||
+  if (area === 'sync' && (changes[STORAGE_KEY] || changes['rgf.allowedTypes'] ||
       changes['rgf.scope'] || changes['rgf.followers'])) {
     loadAndApply();
   } else if (area === 'sync' && changes[STORAGE_ENABLED_KEY]) {
