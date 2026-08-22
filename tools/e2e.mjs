@@ -183,8 +183,30 @@ async function main() {
   check('区块无水平溢出', s7.noHorizontalOverflow, true);
   check('表单行未越出区块', s7.addRowWithinBlock, true);
 
-  // ---- 场景 8：草稿编辑 -> 原生 Save 提交 -> 过滤联动 ----
-  // 在草稿里添加 keyword deny 规则（模拟在面板表单里操作）
+
+  // ---- 场景 9b：id 缺失时经 Catalyst 回退仍能注入 ----
+  await evaljs(ws, `(() => {
+    const block = document.querySelector('#feed-filter-menu .rgf-filter-block');
+    if (block) block.remove();
+    document.getElementById('feed-filter-menu').removeAttribute('id');
+    return 'stripped';
+  })()`);
+  await evaljs(ws, `(async () => {
+    for (let i = 0; i < 40; i++) {
+      if (document.querySelector('.rgf-filter-block')) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error('fallback injection failed');
+  })()`);
+  check('id 缺失时回退定位成功', true, true);
+  // 恢复 id 供后续场景使用（当前夹具已无后续面板场景则无影响）
+  // 恢复 id 供后续场景使用
+  const restored = await evaljs(ws, `(() => {
+    const details = document.querySelector('details');
+    if (details && !details.id) { details.id = 'feed-filter-menu'; return 'restored'; }
+    return 'already';
+  })()`);
+  check('面板 id 已恢复', restored === 'restored' || restored === 'already', true);
   await evaljs(ws, `(() => {
     document.querySelector('.rgf-add-row select').value = 'keyword';
     document.querySelector('.rgf-pattern').value = '*release*';
