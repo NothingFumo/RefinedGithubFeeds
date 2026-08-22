@@ -1,0 +1,28 @@
+/* RefinedGithubFeeds - 注入页样式 */
+
+/* 角标 */
+.rgf-badge {
+  margin: 8px 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--color-fg-muted, #59636e);
+  background: var(--color-canvas-subtle, #f6f8fa);
+  border: 1px solid var(--color-border-default, #d1d9e0);
+  width: fit-content;
+}
+.rgf-badge:hover {
+  color: var(--color-accent-fg, #0969da);
+  border-color: var(--color-accent-emphasis, #0969da);
+}
+.rgf-badge--off {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* 被隐藏条目的标记（display:none 由内联样式控制） */
+.rgf-hidden {
+  /* 仅作语义标记 */
+}
