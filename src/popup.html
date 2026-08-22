@@ -28,30 +28,8 @@
   </h1>
 
   <div class="row" style="margin-top:10px;">
-    <label>维度</label>
-    <select id="dimension">
-      <option value="actor">发起者</option>
-      <option value="repo">仓库</option>
-      <option value="event">事件类型</option>
-      <option value="cardType">卡片类型</option>
-      <option value="keyword">关键词</option>
-    </select>
+    <label>类型过滤在原生面板的 RefinedGithubFeeds 区块中配置</label>
   </div>
-
-  <div class="row">
-    <label>匹配值（支持 * 通配符）</label>
-    <input type="text" id="pattern" placeholder="如 torvalds/* 或 *-cli" />
-  </div>
-
-  <div class="row">
-    <label>极性</label>
-    <select id="polarity">
-      <option value="deny">隐藏命中（deny）</option>
-      <option value="allow">仅放行命中（allow）</option>
-    </select>
-  </div>
-
-  <button class="primary" id="add">添加规则</button>
 
   <footer><a href="#" id="open-options">管理规则 →</a></footer>
 

@@ -11,10 +11,9 @@ const BADGE_ID = 'rgf-badge';
 const BTN_CLASS = 'rgf-quick-btn';
 
 // ---- 状态 ----
-let rules = [];
 let enabled = true;
 let suspended = false; // 临时撤销：本页生效，刷新即失效
-let loaded = false;    // 首次规则加载完成标志（panel.js 注入前依赖）
+let loaded = false;    // 首次配置加载完成标志（panel.js 注入前依赖）
 
 function findFeedContainer() {
   for (const sel of FEED_CONTAINER_SELECTORS) {
@@ -119,17 +118,12 @@ async function applyFilter() {
   const { unchecked } = readNativeSelection();
   const parsed = items.map((el) => ({ el, item: extractItem(el) }));
 
-  // 裁决 = 自定义规则 + 原生勾选联动 + 细粒度类型排除
-  //（后两者不受 suspended 影响：它们是用户明确的类型偏好）
+  // 裁决 = 原生勾选联动 + 细粒度类型白名单 + 发起者范围
+  //（三者不受 suspended 影响：它们是用户明确的类型偏好）
+  // wouldHide 始终按"未撤销"计算（供角标展示恢复后将被滤掉的数量）
   const results = parsed.map(({ el, item }) => {
-    const r = adjudicate(item, rules, enabled);
-    const excluded = !suspended && isExcluded(item, unchecked);
-    return {
-      el, item,
-      hidden: (r.hidden || excluded) && !suspended,
-      wouldHide: r.hidden || excluded,
-      matched: r.matchedRules,
-    };
+    const excluded = isExcluded(item, unchecked);
+    return { el, item, hidden: excluded && !suspended, wouldHide: excluded };
   });
 
   const hiddenCount = results.filter((r) => r.hidden).length;
@@ -138,61 +132,12 @@ async function applyFilter() {
     ? results.filter((r) => r.wouldHide).length
     : hiddenCount;
 
-
-  // 应用可见性 + 悬停快捷按钮；记录本轮隐藏集合用于命中统计去重
-  const newlyHidden = new Set();
+  // 应用可见性 + 悬停快捷按钮
   for (const { el, item, hidden } of results) {
-    const nextDisplay = hidden ? 'none' : '';
-    if ((el.style.display === 'none') !== hidden) {
-      if (hidden) {
-        newlyHidden.add(item.actor || item.repo || item.text.slice(0, 40));
-      }
-    }
-    el.style.setProperty('display', nextDisplay, 'important');
+    el.style.setProperty('display', hidden ? 'none' : '', 'important');
     attachQuickButtons(el);
   }
-
-  // 命中统计：仅对"新隐藏"的去重条目计数，避免 MutationObserver 重渲染时重复累加
-  if (newlyHidden.size > 0) {
-    const hitDelta = {};
-    for (const { item, hidden, matched } of results) {
-      if (!hidden) continue;
-      const key = item.actor || item.repo || item.text.slice(0, 40);
-      if (!newlyHidden.has(key)) continue;
-      for (const id of matched) {
-        hitDelta[id] = (hitDelta[id] || 0) + 1;
-      }
-    }
-    for (const rule of rules) {
-      if (hitDelta[rule.id]) {
-        rule.hits += hitDelta[rule.id];
-        rule._dirtyHits = true;
-      }
-    }
-    schedulePersistHits();
-  }
   updateBadge(badgeCount);
-
-}
-
-// 命中统计节流写回 storage.sync
-let persistTimer = null;
-function schedulePersistHits() {
-  clearTimeout(persistTimer);
-  persistTimer = setTimeout(async () => {
-    const hitMap = {};
-    for (const rule of rules) {
-      if (rule._dirtyHits) {
-        hitMap[rule.id] = rule.hits;
-        delete rule._dirtyHits;
-      }
-    }
-    if (Object.keys(hitMap).length > 0) {
-      const stored = await chrome.storage.sync.get(['rgf.ruleHits']);
-      const merged = Object.assign({}, stored['rgf.ruleHits'] || {}, hitMap);
-      chrome.storage.sync.set({ 'rgf.ruleHits': merged });
-    }
-  }, 2000);
 }
 
 // ---- 悬停快捷按钮 ----
@@ -225,11 +170,14 @@ function attachQuickButtons(el) {
   const wrap = document.createElement('div');
   wrap.className = BTN_CLASS;
   const item = extractItem(el);
-  if (item.actor) {
-    wrap.appendChild(makeQuickBtn(`隐藏 @${item.actor}`, () => addRule(DIMENSIONS.ACTOR, item.actor)));
-  }
-  if (item.repo) {
-    wrap.appendChild(makeQuickBtn(`隐藏 ${item.repo}`, () => addRule(DIMENSIONS.REPO, item.repo)));
+  // 快捷操作：隐藏该卡片类型（从白名单移除），与面板更细过滤联动
+  if (item.cardType) {
+    wrap.appendChild(makeQuickBtn(`隐藏此类动态`, async () => {
+      const stored = await chrome.storage.sync.get(['rgf.allowedTypes']);
+      const cur = Array.isArray(stored['rgf.allowedTypes']) ? new Set(stored['rgf.allowedTypes']) : new Set();
+      cur.delete(item.cardType);
+      await chrome.storage.sync.set({ 'rgf.allowedTypes': [...cur] });
+    }));
   }
   if (wrap.children.length > 0) {
     el.prepend(wrap);
@@ -251,17 +199,8 @@ function makeQuickBtn(label, onClick) {
 // ---- 初始化与监听 ----
 async function loadAndApply() {
   const stored = await chrome.storage.sync.get([
-    STORAGE_KEY, STORAGE_ENABLED_KEY, 'rgf.ruleHits', 'rgf.allowedTypes',
-    'rgf.scope', 'rgf.followers',
+    STORAGE_ENABLED_KEY, 'rgf.allowedTypes', 'rgf.scope', 'rgf.followers',
   ]);
-  const merged = normalizeRules(stored[STORAGE_KEY]);
-  const hits = stored['rgf.ruleHits'] || {};
-  for (const rule of merged) {
-    if (Number.isInteger(hits[rule.id])) {
-      rule.hits = Math.max(rule.hits, hits[rule.id]);
-    }
-  }
-  rules = merged;
   enabled = stored[STORAGE_ENABLED_KEY] !== false;
   // 白名单语义：null = 从未配置（全部显示）；非 null = 只显示集合内的类型
   allowedCardTypes = Array.isArray(stored['rgf.allowedTypes']) ? new Set(stored['rgf.allowedTypes']) : null;
@@ -272,13 +211,14 @@ async function loadAndApply() {
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && (changes[STORAGE_KEY] || changes['rgf.allowedTypes'] ||
+  if (area === 'sync' && (changes['rgf.allowedTypes'] ||
       changes['rgf.scope'] || changes['rgf.followers'])) {
     loadAndApply();
   } else if (area === 'sync' && changes[STORAGE_ENABLED_KEY]) {
     loadAndApply();
   }
 });
+
 getBadge().addEventListener('click', () => {
   if (!enabled) {
     chrome.storage.sync.set({ [STORAGE_ENABLED_KEY]: true });

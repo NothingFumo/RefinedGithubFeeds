@@ -1,25 +1,8 @@
 // RefinedGithubFeeds - 公共常量与工具（内容脚本与扩展页共享，无导出语法）
 'use strict';
 
-// 存储键名
-const STORAGE_KEY = 'rgf.rules';
 // 总开关键
 const STORAGE_ENABLED_KEY = 'rgf.enabled';
-
-// 规则维度
-const DIMENSIONS = {
-  ACTOR: 'actor',       // 发起者
-  REPO: 'repo',         // 仓库全名 owner/repo
-  EVENT: 'event',       // 事件类型
-  CARD_TYPE: 'cardType', // 卡片类型（原生 feed 分类：starred/forked/release 等）
-  KEYWORD: 'keyword',   // 关键词（条目全部文本）
-};
-
-// 极性
-const POLARITY = {
-  DENY: 'deny',    // 命中即隐藏
-  ALLOW: 'allow',  // 白名单模式：未命中任一 allow 的条目一律隐藏
-};
 
 // 事件类型内置映射：标识 -> 中文标签。页面动态收集到的未知类型按原始标识展示。
 const EVENT_LABELS = {
@@ -50,102 +33,6 @@ function globToRegExp(pattern) {
 // 深拷贝（结构化克隆不可用于普通对象数组时的朴素实现）
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
-}
-
-// 生成规则 ID：时间戳 + 随机段，避免同毫秒冲突
-function makeRuleId() {
-  return `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-// 规则工厂：默认 deny + actor 维度
-function makeRule(partial) {
-  // 显式传入的 undefined 不得覆盖默认值
-  const base = {
-    id: makeRuleId(),
-    dimension: DIMENSIONS.ACTOR,
-    pattern: '',
-    polarity: POLARITY.DENY,
-    enabled: true,
-    hits: 0,
-  };
-  for (const [key, value] of Object.entries(partial || {})) {
-    if (value !== undefined) base[key] = value;
-  }
-  return base;
-}
-
-// 校验规则对象：返回错误消息或 null
-function validateRule(rule) {
-  if (!rule) return '规则不能为空';
-  if (!Object.values(DIMENSIONS).includes(rule.dimension)) return '未知维度';
-  if (typeof rule.pattern !== 'string' || rule.pattern.trim() === '') return '匹配值不能为空';
-  if (rule.pattern.length > 200) return '匹配值过长';
-  if (![POLARITY.DENY, POLARITY.ALLOW].includes(rule.polarity)) return '未知极性';
-  return null;
-}
-
-// 归一化整包规则列表：剔除非法项，补齐缺省字段
-function normalizeRules(raw) {
-  if (!Array.isArray(raw)) return [];
-  // 先以工厂默认补齐缺省字段再校验，避免合法的存储残缺记录被整条剔除
-  const filled = raw.map((r) => makeRule({
-    id: r?.id,
-    dimension: r?.dimension,
-    pattern: r?.pattern,
-    polarity: r?.polarity,
-    enabled: r?.enabled,
-    hits: r?.hits,
-  }));
-  return filled.filter((r) => validateRule(r) === null).map((r) => ({
-    ...r,
-    pattern: r.pattern.trim(),
-  }));
-}
-
-// 裁决单条目：命中规则列表 + 是否隐藏（白名单模式语义，见 docs/adr/0001）
-function adjudicate(item, rules, enabled) {
-  if (!enabled) {
-    return { hidden: false, matchedRules: [] };
-  }
-  const active = rules.filter((r) => r.enabled);
-  if (active.length === 0) {
-    return { hidden: false, matchedRules: [] };
-  }
-  const hasAllow = active.some((r) => r.polarity === POLARITY.ALLOW);
-  const matched = [];
-  for (const rule of active) {
-    if (matchRule(item, rule)) {
-      matched.push(rule.id);
-    }
-  }
-  let hidden;
-  if (hasAllow) {
-    // 白名单模式：未命中任何 allow 即隐藏；deny 命中叠加剔除
-    const hitAllow = matched.some((id) => active.find((r) => r.id === id).polarity === POLARITY.ALLOW);
-    const hitDeny = matched.some((id) => active.find((r) => r.id === id).polarity === POLARITY.DENY);
-    hidden = !hitAllow || hitDeny;
-  } else {
-    hidden = matched.length > 0;
-  }
-  return { hidden, matchedRules: matched };
-}
-
-// 单条规则对条目求值：按维度分派
-function matchRule(item, rule) {
-  switch (rule.dimension) {
-    case DIMENSIONS.ACTOR:
-      return matchPattern(item.actor, rule.pattern);
-    case DIMENSIONS.REPO:
-      return matchPattern(item.repo, rule.pattern);
-    case DIMENSIONS.EVENT:
-      return matchPattern(item.event, rule.pattern);
-    case DIMENSIONS.CARD_TYPE:
-      return matchPattern(item.cardType, rule.pattern);
-    case DIMENSIONS.KEYWORD:
-      return matchPattern(item.text, rule.pattern);
-    default:
-      return false;
-  }
 }
 
 // 通配符匹配（glob 语义，大小写不敏感；见 docs/adr/0002）
