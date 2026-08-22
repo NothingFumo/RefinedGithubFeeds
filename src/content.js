@@ -14,6 +14,7 @@ const BTN_CLASS = 'rgf-quick-btn';
 let rules = [];
 let enabled = true;
 let suspended = false; // 临时撤销：本页生效，刷新即失效
+let loaded = false;    // 首次规则加载完成标志（panel.js 注入前依赖）
 
 function findFeedContainer() {
   for (const sel of FEED_CONTAINER_SELECTORS) {
@@ -201,6 +202,7 @@ async function loadAndApply() {
   }
   rules = merged;
   enabled = stored[STORAGE_ENABLED_KEY] !== false;
+  loaded = true;
   applyFilter();
 }
 
