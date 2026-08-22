@@ -13,26 +13,15 @@
 }
 
 .rgf-rule-list {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  margin-top: 4px;
 }
 
+/* 规则行复用原生 SelectMenu-item 类；此处只补充内部布局 */
 .rgf-rule-row {
-  display: flex;
-  align-items: center;
+  cursor: default;
   gap: 6px;
-  line-height: 20px;
 }
 
-.rgf-dim-badge {
-  flex-shrink: 0;
-  padding: 0 6px;
-  border-radius: 6px;
-  background: var(--color-neutral-muted, #afb8c133);
-  color: var(--color-fg-default, #1f2328);
-}
 
 .rgf-pol-badge {
   flex-shrink: 0;
@@ -46,12 +35,6 @@
 .rgf-pol-allow {
   background: var(--color-success-subtle, #dafbe1);
   color: var(--color-success-emphasis, #1a7f37);
-}
-
-.rgf-pattern-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* 表单行：窄面板下自动换行，避免挤压溢出错位 */
