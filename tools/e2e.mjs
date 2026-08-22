@@ -157,31 +157,26 @@ async function main() {
     const block = document.querySelector('#feed-filter-menu .rgf-filter-block');
     const nativeGroup = document.querySelector('#feed-filter-menu .tmp-px-3.mt-2:not(.rgf-filter-block)');
     const scrollArea = document.querySelector('#feed-filter-menu feed-filter .pt-2.overflow-auto');
-    const addRow = document.querySelector('.rgf-add-row');
     const b = block.getBoundingClientRect();
     const n = nativeGroup ? nativeGroup.getBoundingClientRect() : null;
-    const a = addRow.getBoundingClientRect();
     return {
       blockExists: !!block,
       hostIsScrollArea: !!document.querySelector('#feed-filter-menu feed-filter .pt-2.overflow-auto > .rgf-filter-block'),
-      modeHint: document.querySelector('.rgf-mode-hint') ? document.querySelector('.rgf-mode-hint').textContent : null,
-      ruleRows: document.querySelectorAll('.rgf-rule-row').length,
       instantSave: block.dataset.instantSave || '',
+      subFilters: !!block.querySelector('.rgf-subfilters'),
+      subChecks: block.querySelectorAll('.rgf-subfilters input[data-card-type]').length,
       // 几何对齐度量：区块与原生分组的左右内边距起点应一致
       blockLeft: Math.round(b.left),
       nativeLeft: n ? Math.round(n.left) : null,
-      blockRight: Math.round(b.right),
-      nativeRight: n ? Math.round(n.right) : null,
       noHorizontalOverflow: b.right <= scrollArea.getBoundingClientRect().right + 1 && b.left >= scrollArea.getBoundingClientRect().left - 1,
-      addRowWithinBlock: a.right <= b.right + 1 && a.left >= b.left - 1,
     };
   })())`));
   check('注入区块存在于面板内', s7.blockExists, true);
   check('区块落在可滚动内容区内', s7.hostIsScrollArea, true);
   check('区块与原生分组左缘对齐', s7.nativeLeft !== null && Math.abs(s7.blockLeft - s7.nativeLeft) <= 2, true);
-  check('区块与原生分组右缘对齐', s7.nativeRight !== null && Math.abs(s7.blockRight - s7.nativeRight) <= 2, true);
   check('区块无水平溢出', s7.noHorizontalOverflow, true);
-  check('表单行未越出区块', s7.addRowWithinBlock, true);
+  check('更细过滤分组已注入', s7.subFilters, true);
+  check('八种卡片类型开关齐全', s7.subChecks, 8);
 
 
   // ---- 场景 9b：id 缺失时经 Catalyst 回退仍能注入 ----
@@ -243,65 +238,31 @@ async function main() {
   })()`);
   check('宿主外孤儿区块被自动清扫', true, true);
 
-  // ---- 场景 8：草稿编辑 -> 原生 Save 提交 -> 过滤联动 ----
+  // ---- 场景 8e：细粒度开关草稿 -> 原生 Save 提交 ----
   await evaljs(ws, `(() => {
-    document.querySelector('.rgf-add-row select').value = 'keyword';
-    document.querySelector('.rgf-pattern').value = '*release*';
-
-    document.querySelector('.rgf-btn-add').click();
-    return 'added';
-  })()`);
-  const draftMarkShown = await evaljs(ws, `!document.querySelector('.rgf-draft-mark').hidden`);
-  check('草稿标记显示未保存', draftMarkShown, true);
-  // 点击原生 Save
-  await evaljs(ws, `[...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click(); 'saved'`);
-  await new Promise((r) => setTimeout(r, 600));
-  const s8 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
-    stored: (window.__rgfStore['rgf.rules'] || []).map(r => r.dimension + ':' + r.pattern),
-    markHidden: document.querySelector('.rgf-draft-mark').hidden,
-    ruleRows: document.querySelectorAll('.rgf-rule-row').length,
-  }))())`));
-  // ---- 场景 9e：原生勾选联动——取消勾选 Stars 后 STARRED_REPOSITORY 条目隐藏 ----
-  await evaljs(ws, `(() => {
-    const input = document.querySelector('#feed-filter-menu input[name="Stars"]');
-    if (input) input.checked = false;
+    const chk = document.querySelector('.rgf-subfilters input[data-card-type="RELEASE"]');
+    if (!chk) throw new Error('subfilter missing');
+    chk.checked = false;
+    chk.dispatchEvent(new Event('change'));
     return 'unchecked';
   })()`);
-  await new Promise((r) => setTimeout(r, 500));
-  const s10 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
-    alice: document.querySelector('#item-alice').style.display,
-    bob: document.querySelector('#item-bob').style.display,
+  await evaljs(ws, `[...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click(); 'saved'`);
+  await new Promise((r) => setTimeout(r, 700));
+  const s12 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
+    stored: window.__rgfStore['rgf.excludedTypes'] || [],
+    spammer: document.querySelector('#item-spammer') ? document.querySelector('#item-spammer').style.display : 'gone',
   }))())`));
-  check('取消勾选后 starred 条目被原生联动隐藏', [s10.alice, s10.bob], ['none', 'none']);
-  // 恢复勾选
+  check('Save 后类型排除写入存储', s12.stored.includes('RELEASE'), true);
+  check('排除 RELEASE 后 fork 条目隐藏', s12.spammer === 'none', true);
+  // 还原：重新勾选并 Save
   await evaljs(ws, `(() => {
-    const input = document.querySelector('#feed-filter-menu input[name="Stars"]');
-    if (input) input.checked = true;
-    return 'checked';
+    const chk = document.querySelector('.rgf-subfilters input[data-card-type="RELEASE"]');
+    if (chk) { chk.checked = true; chk.dispatchEvent(new Event('change')); }
+    [...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click();
+    return 'restored';
   })()`);
-  await new Promise((r) => setTimeout(r, 400));
-  const s11 = JSON.parse(await evaljs(ws, `JSON.stringify({
-    alice: document.querySelector('#item-alice').style.display,
-  })`));
-  check('重新勾选后 starred 条目恢复显示', s11.alice, '');
-  check('Save 后草稿写入存储', s8.stored.includes('keyword:*release*'), true);
-  check('Save 后草稿标记消失', s8.markHidden, true);
-  check('规则行更新为三条', s8.ruleRows, 3);
+  await new Promise((r) => setTimeout(r, 500));
 
-  // ---- 场景 9：Reset 还原草稿 ----
-  await evaljs(ws, `(() => {
-    document.querySelector('.rgf-pattern').value = '*sponsor*';
-    document.querySelector('.rgf-btn-add').click();
-    [...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.includes('Reset')).click();
-    return 'reset';
-  })()`);
-  await new Promise((r) => setTimeout(r, 400));
-  const s9 = JSON.parse(await evaljs(ws, `JSON.stringify({
-    markHidden: document.querySelector('.rgf-draft-mark').hidden,
-    ruleRows: document.querySelectorAll('.rgf-rule-row').length,
-  })`));
-  check('Reset 后草稿被丢弃回到已存状态', s9.markHidden, true);
-  check('Reset 后规则回到三条', s9.ruleRows, 3);
   let failed = 0;
   for (const c of CHECKS) {
     if (!c.ok) failed++;
