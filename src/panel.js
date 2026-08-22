@@ -284,13 +284,20 @@ async function injectPanelBlock() {
 
     // 挂钩原生 Save / Reset（捕获阶段先于 Catalyst 动作）；找不到 Save 则降级为即改即存
     if (saveBtn) {
-      saveBtn.addEventListener('click', () => { commitDraft(); }, true);
+      saveBtn.addEventListener('click', () => {
+        commitDraft();
+        commitSubFilters();
+      }, true);
     } else {
       console.warn('[RefinedGithubFeeds] 未找到原生 Save 按钮，注入区块改为即改即存');
       block.dataset.instantSave = 'true';
     }
     if (resetBtn) {
-      resetBtn.addEventListener('click', () => { discardDraft(); }, true);
+      resetBtn.addEventListener('click', () => {
+        discardDraft();
+        discardSubDraft();
+        renderRuleList(block);
+      }, true);
     }
 
     // 清理历史遗留/竞态产生的孤儿节点（宿主外的分隔符与区块）
@@ -331,9 +338,12 @@ const CARD_TYPE_DEFS = [
 ];
 const SUBFILTER_KEY = 'rgf.excludedTypes'; // 存储排除的 card_type 集合
 
+let draftExcluded = null;   // 细粒度过滤草稿：与规则草稿同随原生 Save 提交
+let subFilterBase = null;   // 已提交的排除集合基线
 async function buildSubFilters(block) {
   const stored = await chrome.storage.sync.get([SUBFILTER_KEY]);
-  const excluded = new Set(stored[SUBFILTER_KEY] || []);
+  subFilterBase = new Set(stored[SUBFILTER_KEY] || []);
+  if (draftExcluded === null) draftExcluded = new Set(subFilterBase);
 
   const section = document.createElement('div');
   section.className = 'rgf-subfilters';
@@ -343,7 +353,7 @@ async function buildSubFilters(block) {
   section.appendChild(title);
   const desc = document.createElement('p');
   desc.className = 'small color-fg-muted mt-1';
-  desc.textContent = '取消勾选即从首页隐藏该类型，立即生效，无需 Save';
+  desc.textContent = '取消勾选即隐藏该类型，点 Save 生效';
   section.appendChild(desc);
 
   for (const [type, label] of CARD_TYPE_DEFS) {
@@ -351,14 +361,11 @@ async function buildSubFilters(block) {
     rowEl.className = 'rgf-sub-row d-flex flex-items-center my-1 tmp-px-3 text-normal SelectMenu-item';
     const chk = document.createElement('input');
     chk.type = 'checkbox';
-    chk.checked = !excluded.has(type); // 勾选=显示
+    chk.checked = !draftExcluded.has(type); // 勾选=显示
     chk.dataset.cardType = type;
-    chk.addEventListener('change', async () => {
-      const cur = await chrome.storage.sync.get([SUBFILTER_KEY]);
-      const set = new Set(cur[SUBFILTER_KEY] || []);
-      chk.checked ? set.delete(type) : set.add(type);
-      await chrome.storage.sync.set({ [SUBFILTER_KEY]: [...set] });
-      applyFilter();
+    chk.addEventListener('change', () => {
+      chk.checked ? draftExcluded.delete(type) : draftExcluded.add(type);
+      markDraftDirty(block);
     });
     const lbl = document.createElement('span');
     lbl.className = 'ml-2';
@@ -367,6 +374,30 @@ async function buildSubFilters(block) {
     section.appendChild(rowEl);
   }
   block.appendChild(section);
+}
+
+function subFiltersChanged() {
+  return draftExcluded !== null &&
+    (draftExcluded.size !== subFilterBase.size ||
+     [...draftExcluded].some((t) => !subFilterBase.has(t)));
+}
+
+async function commitSubFilters() {
+  if (!subFiltersChanged()) {
+    discardSubDraft();
+    return false;
+  }
+  await chrome.storage.sync.set({ [SUBFILTER_KEY]: [...draftExcluded] });
+  subFilterBase = new Set(draftExcluded);
+  discardSubDraft();
+  applyFilter();
+  return true;
+}
+
+function discardSubDraft() {
+  if (draftExcluded !== null) {
+    draftExcluded = new Set(subFilterBase);
+  }
 }
 
 function buildSeparator() {
