@@ -222,7 +222,9 @@ async function main() {
   // ---- 场景 9d：宿主外的孤儿区块/分隔符应被清扫（复现用户页面双份注入）----
   await evaljs(ws, `(() => {
     const details = document.getElementById('feed-filter-menu');
-    const clone = document.querySelector('#feed-filter-menu .rgf-filter-block').cloneNode(true);
+    const srcBlock = document.querySelector('#feed-filter-menu .rgf-filter-block');
+    if (!srcBlock) return 'no-block-skip';
+    const clone = srcBlock.cloneNode(true);
     const sep = document.createElement('hr');
     sep.className = 'rgf-sep';
     sep.dataset.rgfSep = 'true';
@@ -241,9 +243,11 @@ async function main() {
   })()`);
   check('宿主外孤儿区块被自动清扫', true, true);
 
+  // ---- 场景 8：草稿编辑 -> 原生 Save 提交 -> 过滤联动 ----
   await evaljs(ws, `(() => {
     document.querySelector('.rgf-add-row select').value = 'keyword';
     document.querySelector('.rgf-pattern').value = '*release*';
+
     document.querySelector('.rgf-btn-add').click();
     return 'added';
   })()`);
@@ -257,6 +261,29 @@ async function main() {
     markHidden: document.querySelector('.rgf-draft-mark').hidden,
     ruleRows: document.querySelectorAll('.rgf-rule-row').length,
   }))())`));
+  // ---- 场景 9e：原生勾选联动——取消勾选 Stars 后 STARRED_REPOSITORY 条目隐藏 ----
+  await evaljs(ws, `(() => {
+    const input = document.querySelector('#feed-filter-menu input[name="Stars"]');
+    if (input) input.checked = false;
+    return 'unchecked';
+  })()`);
+  await new Promise((r) => setTimeout(r, 500));
+  const s10 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
+    alice: document.querySelector('#item-alice').style.display,
+    bob: document.querySelector('#item-bob').style.display,
+  }))())`));
+  check('取消勾选后 starred 条目被原生联动隐藏', [s10.alice, s10.bob], ['none', 'none']);
+  // 恢复勾选
+  await evaljs(ws, `(() => {
+    const input = document.querySelector('#feed-filter-menu input[name="Stars"]');
+    if (input) input.checked = true;
+    return 'checked';
+  })()`);
+  await new Promise((r) => setTimeout(r, 400));
+  const s11 = JSON.parse(await evaljs(ws, `JSON.stringify({
+    alice: document.querySelector('#item-alice').style.display,
+  })`));
+  check('重新勾选后 starred 条目恢复显示', s11.alice, '');
   check('Save 后草稿写入存储', s8.stored.includes('keyword:*release*'), true);
   check('Save 后草稿标记消失', s8.markHidden, true);
   check('规则行更新为三条', s8.ruleRows, 3);
