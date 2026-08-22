@@ -71,6 +71,10 @@ const NATIVE_TYPE_MAP = {
 
 // 细粒度排除集（panel.js 更细过滤写入 rgf.excludedTypes）
 let excludedCardTypes = new Set();
+// 发起者范围开关：rgf.scope = { onlyFollowers: bool, onlyMyRepos: bool }
+let scopeFilter = { onlyFollowers: false, onlyMyRepos: false };
+// 关注者名单缓存（panel.js 抓取写入 rgf.followers + rgf.followersAt）
+let followersSet = null;
 
 function readNativeSelection() {
   const checked = new Set();
@@ -82,14 +86,24 @@ function readNativeSelection() {
   return { checked, unchecked };
 }
 
-// 条目是否被排除：细粒度排除集命中 或 原生未勾选分组的映射类型命中
+// 条目是否被排除：细粒度排除集 / 原生未勾选分组 / 发起者范围 三方判定
 function isExcluded(item, unchecked) {
   if (item.cardType && excludedCardTypes.has(item.cardType)) return true;
-  if (unchecked.size === 0 || !item.cardType) return false;
-  for (const name of unchecked) {
-    const types = NATIVE_TYPE_MAP[name];
-    if (!types) continue;
-    if (types.split(',').includes(item.cardType)) return true;
+  if (unchecked.size > 0 && item.cardType) {
+    for (const name of unchecked) {
+      const types = NATIVE_TYPE_MAP[name];
+      if (!types) continue;
+      if (types.split(',').includes(item.cardType)) return true;
+    }
+  }
+  // 发起者范围：仅当条目有 actor 时可判定；无 actor 的推荐/趋势不受影响
+  if ((scopeFilter.onlyFollowers || scopeFilter.onlyMyRepos) && item.actor) {
+    if (scopeFilter.onlyFollowers &&
+        followersSet && !followersSet.has(item.actor.toLowerCase())) return true;
+    if (scopeFilter.onlyMyRepos && item.repo) {
+      const me = currentUser();
+      if (me && !item.repo.toLowerCase().startsWith(me.toLowerCase() + '/')) return true;
+    }
   }
   return false;
 }
@@ -231,16 +245,12 @@ function makeQuickBtn(label, onClick) {
   return btn;
 }
 
-async function addRule(dimension, pattern) {
-  const rule = makeRule({ dimension, pattern, polarity: POLARITY.DENY });
-  rules.push(rule);
-  await chrome.storage.sync.set({ [STORAGE_KEY]: rules });
-  applyFilter();
-}
-
 // ---- 初始化与监听 ----
 async function loadAndApply() {
-  const stored = await chrome.storage.sync.get([STORAGE_KEY, STORAGE_ENABLED_KEY, 'rgf.ruleHits', 'rgf.excludedTypes']);
+  const stored = await chrome.storage.sync.get([
+    STORAGE_KEY, STORAGE_ENABLED_KEY, 'rgf.ruleHits', 'rgf.excludedTypes',
+    'rgf.scope', 'rgf.followers',
+  ]);
   const merged = normalizeRules(stored[STORAGE_KEY]);
   const hits = stored['rgf.ruleHits'] || {};
   for (const rule of merged) {
@@ -251,12 +261,15 @@ async function loadAndApply() {
   rules = merged;
   enabled = stored[STORAGE_ENABLED_KEY] !== false;
   excludedCardTypes = new Set(stored['rgf.excludedTypes'] || []);
+  scopeFilter = Object.assign({ onlyFollowers: false, onlyMyRepos: false }, stored['rgf.scope']);
+  followersSet = new Set((stored['rgf.followers'] || []).map((u) => u.toLowerCase()));
   loaded = true;
   applyFilter();
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && (changes[STORAGE_KEY] || changes['rgf.excludedTypes'])) {
+  if (area === 'sync' && (changes[STORAGE_KEY] || changes['rgf.excludedTypes'] ||
+      changes['rgf.scope'] || changes['rgf.followers'])) {
     loadAndApply();
   } else if (area === 'sync' && changes[STORAGE_ENABLED_KEY]) {
     loadAndApply();
