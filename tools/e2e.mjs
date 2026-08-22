@@ -206,7 +206,19 @@ async function main() {
     if (details && !details.id) { details.id = 'feed-filter-menu'; return 'restored'; }
     return 'already';
   })()`);
-  check('面板 id 已恢复', restored === 'restored' || restored === 'already', true);
+  // ---- 场景 9c：重注入不得堆积分隔符（真实页面点击 Filter 即触发重渲染）----
+  await evaljs(ws, `(async () => {
+    const host = document.querySelector('#feed-filter-menu .pt-2.overflow-auto');
+    // 模拟 GitHub turbo 重渲染：移除区块，观察器自动重注入
+    for (let i = 0; i < 5; i++) {
+      host.querySelector(':scope > .rgf-filter-block')?.remove();
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return host.querySelectorAll(':scope > hr[data-rgf-sep]').length;
+  })()`);
+  const sepCount = JSON.parse(await evaljs(ws, `document.querySelectorAll('#feed-filter-menu [data-rgf-sep]').length`));
+  check('多次重注入后分隔符不堆积', sepCount <= 1, true);
+
   await evaljs(ws, `(() => {
     document.querySelector('.rgf-add-row select').value = 'keyword';
     document.querySelector('.rgf-pattern').value = '*release*';
