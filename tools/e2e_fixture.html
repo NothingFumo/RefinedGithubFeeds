@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>RefinedGithubFeeds E2E 夹具</title>
+<script>
+// ---- chrome.* 最小桩：忠实模拟真实 Chrome 行为，必须在扩展脚本之前加载 ----
+(function () {
+  const data = {
+    'rgf.enabled': true,
+    'rgf.rules': [
+      { id: 'r_deny_spammer', dimension: 'actor', pattern: 'spammer', polarity: 'deny', enabled: true, hits: 0 },
+      { id: 'r_allow_alice', dimension: 'actor', pattern: 'alice', polarity: 'allow', enabled: true, hits: 0 },
+    ],
+    'rgf.ruleHits': {},
+  };
+  window.__rgfStore = data;
+  const listeners = [];
+  window.__rgfListeners = listeners;
+  window.chrome = {
+    storage: {
+      sync: {
+        async get(keys) {
+          const out = {};
+          for (const k of keys) if (k in data) out[k] = JSON.parse(JSON.stringify(data[k]));
+          return out;
+        },
+        async set(obj) {
+          // 真实 Chrome 语义：监听器收到 {key: {oldValue, newValue}} 变更记录
+          const changes = {};
+          for (const k of Object.keys(obj)) {
+            changes[k] = { oldValue: data[k], newValue: obj[k] };
+          }
+          Object.assign(data, JSON.parse(JSON.stringify(obj)));
+          for (const l of [...listeners]) {
+            try { l(changes, 'sync'); } catch (e) { console.error('[stub listener error]', e); }
+          }
+          window.__rgfDispatched = (window.__rgfDispatched || 0) + 1;
+        },
+      },
+      onChanged: {
+        addListener(fn) {
+          listeners.push(fn);
+          window.__rgfRegistered = (window.__rgfRegistered || 0) + 1;
+        },
+      },
+    },
+  };
+})();
+</script>
+<link rel="stylesheet" href="../src/content.css" />
+<style>body{font:14px system-ui;padding:16px;} article.js-feed-item-component{border:1px solid #d1d9e0;border-radius:6px;padding:12px;margin-bottom:8px;position:relative;}</style>
+</head>
+<body>
+<main>
+  <h1>Feed 夹具</h1>
+  <div id="dashboard"><div><feed-container id="conduit-feed-frame">
+    <article class="js-feed-item-component" id="item-alice">
+      <a data-hovercard-type="user" href="/alice">@alice</a> starred
+      <a data-hovercard-type="repository" href="/alice/web-toolkit">alice / web-toolkit</a>
+      <p>starred a repository</p>
+    </article>
+    <article class="js-feed-item-component" id="item-spammer">
+      <a data-hovercard-type="user" href="/spammer">@spammer</a> pushed to
+      <a data-hovercard-type="repository" href="/spammer/junk">spammer / junk</a>
+      <p>pushed 3 commits</p>
+    </article>
+    <article class="js-feed-item-component" id="item-bob">
+      <a data-hovercard-type="user" href="/bob">@bob</a> forked
+      <a data-hovercard-type="repository" href="bob/kernel">bob / kernel</a>
+      <p>forked a repository</p>
+    </article>
+  </feed-container></div></div>
+</main>
+<script src="../src/shared.js"></script>
+<script src="../src/content.js"></script>
+</body>
+</html>

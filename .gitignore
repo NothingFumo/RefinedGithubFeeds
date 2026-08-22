@@ -1,0 +1,4 @@
+__pycache__/
+.e2e-profile/
+*.pyc
+*.zip
