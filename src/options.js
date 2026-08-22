@@ -2,10 +2,9 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-const DIM_LABELS = { actor: '发起者', repo: '仓库', event: '事件类型', keyword: '关键词' };
 const POL_LABELS = { deny: '隐藏命中', allow: '仅放行' };
 
-let rules = [];
+const DIM_LABELS = { actor: '发起者', repo: '仓库', event: '事件类型', cardType: '卡片类型', keyword: '关键词' };
 
 async function load() {
   const stored = await chrome.storage.sync.get(['rgf.rules']);
