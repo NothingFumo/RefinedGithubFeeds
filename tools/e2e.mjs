@@ -123,7 +123,7 @@ async function main() {
   })()`);
   await new Promise((r) => setTimeout(r, 800));
   const s4 = JSON.parse(await evaljs(ws, `JSON.stringify({ newItem: document.querySelector('#item-new-spam').style.display, badge: document.querySelector('#rgf-badge').textContent })`));
-  check('新插入条目被自动过滤', s4.newItem, 'none');
+  check('无类型新条目不被白名单误杀', s4.newItem, '');
 
   // ---- 场景 5：storage 写入白名单即联动（popup 等价路径）----
   await evaljs(ws, `chrome.storage.sync.set({ 'rgf.allowedTypes': ['STARRED_REPOSITORY','FORKED_REPOSITORY'] }); 'set'`);
@@ -268,6 +268,25 @@ async function main() {
     [...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click();
   })()`);
   await new Promise((r) => setTimeout(r, 500));
+
+  // ---- 场景 9f：全部勾选 + Save 后，所有条目应显示（复现用户报告）----
+  await evaljs(ws, `(async () => {
+    // 全部勾选
+    for (const chk of document.querySelectorAll('.rgf-subfilters input[data-card-type]')) {
+      chk.checked = true;
+      chk.dispatchEvent(new Event('change'));
+    }
+    [...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click();
+    return 'saved-all';
+  })()`);
+  await new Promise((r) => setTimeout(r, 700));
+  const s13 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
+    stored: window.__rgfStore['rgf.allowedTypes'] || [],
+    hidden: [...document.querySelectorAll('article.js-feed-item-component')].filter(e => e.style.display === 'none').map(e => e.id),
+    badge: document.querySelector('#rgf-badge').textContent,
+  }))())`));
+  check('全勾选 Save 后白名单含全部八类', s13.stored.length, 8);
+  check('全勾选后无隐藏条目', s13.hidden.length, 0);
 
   let failed = 0;
   for (const c of CHECKS) {
