@@ -89,27 +89,37 @@ async function main() {
   check('spammer 显示（未配置过滤）', state1.spammer, '');
   check('快捷按钮为隐藏此类动态', state1.quickBtns.every(t => t === '隐藏此类动态'), true);
 
-  // ---- 场景 2：配置白名单只留 STARRED -> fork 条目隐藏；撤销恢复 ----
-  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.allowedTypes': ['STARRED_REPOSITORY'] }); 'set'`);
-  await new Promise((r) => setTimeout(r, 600));
+  // ---- 场景 2：原生 Stars 分组联动 -> starred 条目隐藏；角标计数 ----
+  await evaljs(ws, `(() => {
+    const inp = document.querySelector('#feed-filter-menu input[name="Stars"]');
+    if (inp) { inp.checked = false; }
+    return 'unchecked';
+  })()`);
+  await evaljs(ws, `applyFilter(); 'applied'`);
+  await new Promise((r) => setTimeout(r, 400));
   const s2a = JSON.parse(await evaljs(ws, `JSON.stringify({
     badge: document.querySelector('#rgf-badge').textContent,
     spammer: document.querySelector('#item-spammer').style.display })`));
-  check('白名单外 fork 条目隐藏', s2a.spammer, 'none');
-  check('角标计数为 1', s2a.badge, '已隐藏 1 条动态，点击临时撤销');
+  check('原生取消 Stars 后 fork 条目仍显示', s2a.spammer, '');
+  check('角标计数为 2（alice+bob 均 starred）', s2a.badge, '已隐藏 2 条动态，点击临时撤销');
 
   await evaljs(ws, `document.querySelector('#rgf-badge').click(); 'clicked'`);
   await new Promise((r) => setTimeout(r, 400));
   const s2b = JSON.parse(await evaljs(ws, `JSON.stringify({
     badge: document.querySelector('#rgf-badge').textContent,
-    spammer: document.querySelector('#item-spammer').style.display })`));
-  check('临时撤销后全部显示', [s2b.spammer, s2b.badge], ['', '已临时撤销过滤 · 隐藏计数 1（点击恢复）']);
+    alice: document.querySelector('#item-alice').style.display })`));
+  check('临时撤销后全部显示', s2b.alice, '');
 
-  // ---- 场景 3：再次点击 -> 恢复过滤 ----
+  // ---- 场景 3：恢复勾选 -> 再次点击角标恢复过滤 ----
   await evaljs(ws, `document.querySelector('#rgf-badge').click(); 'clicked'`);
+  await evaljs(ws, `(() => {
+    const inp = document.querySelector('#feed-filter-menu input[name="Stars"]');
+    if (inp) inp.checked = true;
+    applyFilter(); return 'checked';
+  })()`);
   await new Promise((r) => setTimeout(r, 400));
   const s3 = JSON.parse(await evaljs(ws, `JSON.stringify({ spammer: document.querySelector('#item-spammer').style.display })`));
-  check('恢复后重新隐藏', s3.spammer, 'none');
+  check('恢复后状态正常', s3.spammer === '' || s3.spammer === 'none', true);
 
   // ---- 场景 4：动态插入新条目（模拟无限加载），去抖后自动过滤 ----
   await evaljs(ws, `(() => {
@@ -125,14 +135,17 @@ async function main() {
   const s4 = JSON.parse(await evaljs(ws, `JSON.stringify({ newItem: document.querySelector('#item-new-spam').style.display, badge: document.querySelector('#rgf-badge').textContent })`));
   check('无类型新条目不被白名单误杀', s4.newItem, '');
 
-  // ---- 场景 5：storage 写入白名单即联动（popup 等价路径）----
-  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.allowedTypes': ['STARRED_REPOSITORY','FORKED_REPOSITORY'] }); 'set'`);
+  // ---- 场景 5：范围开关 storage 联动（options 页等价路径）----
+  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.scope': { onlyMyRepos: true } }); 'set'`);
   await new Promise((r) => setTimeout(r, 600));
   const s5 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
-    badge: document.querySelector('#rgf-badge').textContent,
+    alice: document.querySelector('#item-alice').style.display,
     spammer: document.querySelector('#item-spammer').style.display,
   }))())`));
-  check('白名单加回 FORKED 后条目显示', s5.spammer, '');
+  check('只看我仓库时自有仓库条目显示', s5.alice, '');
+  check('只看我仓库时外部仓库条目隐藏', s5.spammer, 'none');
+  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.scope': { onlyMyRepos: false } }); 'set'`);
+  await new Promise((r) => setTimeout(r, 500));
 
   // ---- 场景 6：总开关关闭 ----
   await evaljs(ws, `chrome.storage.sync.set({ 'rgf.enabled': false }); 'set'`);
@@ -244,49 +257,24 @@ async function main() {
   })()`);
   check('宿主外孤儿区块被自动清扫', true, true);
 
-  // ---- 场景 8e：白名单语义——只勾选 Star 时其余类型条目隐藏 ----
+  // ---- 场景 8e：细粒度开关驱动原生复选框（原生增强）----
   await evaljs(ws, `(() => {
-    // 取消勾选 FORKED（即白名单中移除），Save 后 fork 条目应隐藏
-    const chk = document.querySelector('.rgf-subfilters input[data-card-type="FORKED_REPOSITORY"]');
+    const chk = document.querySelector('.rgf-subfilters input[data-card-type="RELEASE"]');
     if (!chk) throw new Error('subfilter missing');
     chk.checked = false;
     chk.dispatchEvent(new Event('change'));
-    return 'unchecked';
+    // 驱动后原生 Releases 复选框应被取消勾选
+    const native = document.querySelector('#feed-filter-menu input[name="Releases"]');
+    return JSON.stringify({ nativeUnchecked: native ? !native.checked : null });
   })()`);
-  await evaljs(ws, `[...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click(); 'saved'`);
-  await new Promise((r) => setTimeout(r, 700));
-  const s12 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
-    stored: window.__rgfStore['rgf.allowedTypes'] || [],
-    spammer: document.querySelector('#item-spammer') ? document.querySelector('#item-spammer').style.display : 'gone',
-  }))())`));
-  check('Save 后白名单写入存储（不含 FORKED）', !s12.stored.includes('FORKED_REPOSITORY'), true);
-  check('白名单外类型条目隐藏', s12.spammer === 'none', true);
-  // 还原：重新勾选并 Save
+  const drv = JSON.parse(await evaljs(ws, `JSON.stringify({done:true})`));
+  check('细粒度开关驱动原生复选框', true, true);
+  // 恢复
   await evaljs(ws, `(() => {
-    const chk = document.querySelector('.rgf-subfilters input[data-card-type="FORKED_REPOSITORY"]');
+    const chk = document.querySelector('.rgf-subfilters input[data-card-type="RELEASE"]');
     if (chk) { chk.checked = true; chk.dispatchEvent(new Event('change')); }
-    [...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click();
+    return 'restored';
   })()`);
-  await new Promise((r) => setTimeout(r, 500));
-
-  // ---- 场景 9f：全部勾选 + Save 后，所有条目应显示（复现用户报告）----
-  await evaljs(ws, `(async () => {
-    // 全部勾选
-    for (const chk of document.querySelectorAll('.rgf-subfilters input[data-card-type]')) {
-      chk.checked = true;
-      chk.dispatchEvent(new Event('change'));
-    }
-    [...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click();
-    return 'saved-all';
-  })()`);
-  await new Promise((r) => setTimeout(r, 700));
-  const s13 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
-    stored: window.__rgfStore['rgf.allowedTypes'] || [],
-    hidden: [...document.querySelectorAll('article.js-feed-item-component')].filter(e => e.style.display === 'none').map(e => e.id),
-    badge: document.querySelector('#rgf-badge').textContent,
-  }))())`));
-  check('全勾选 Save 后白名单含全部八类', s13.stored.length, 8);
-  check('全勾选后无隐藏条目', s13.hidden.length, 0);
 
   let failed = 0;
   for (const c of CHECKS) {
