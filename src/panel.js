@@ -43,7 +43,8 @@ const DIM_LABELS = { actor: '发起者', repo: '仓库', event: '事件', keywor
 
 function buildBlock() {
   const block = document.createElement('div');
-  block.className = BLOCK_CLASS;
+  // 复用原生间距类：与 Events 分组标题同节奏（tmp-px-3 水平、mt-2 顶部）
+  block.className = `${BLOCK_CLASS} tmp-px-3 mt-2`;
 
   const title = document.createElement('div');
   title.className = 'rgf-block-title';
