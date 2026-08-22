@@ -1,10 +1,24 @@
-/* RefinedGithubFeeds - 原生筛选面板注入区块（贴近 Primer 风格） */
-/* 水平节奏由原生 tmp-px-3 类控制（见 panel.js buildBlock）；
-   组间分隔使用原生 hr 元素（见 panel.js injectPanelBlock），不再自绘 */
+/* RefinedGithubFeeds - 原生筛选面板注入区块 */
+/* 布局完全自持：不依赖 GitHub 工具类（tmp-* 定义随版本漂移）；
+   取值用 Primer 变量并带合理回退，保证任何版本下面块盒模型稳定 */
 
 .rgf-filter-block {
   font-size: 12px;
   color: var(--color-fg-muted, #59636e);
+  /* 与原生分组同节奏的水平/顶部间距（等价 tmp-px-3 + mt-2） */
+  padding: 0 var(--primer-control-medium-paddingInline-normal, 16px);
+  margin-top: var(--base-size-8, 8px);
+}
+
+/* 组间分隔线：与原生 hr 同观感。通栏用负 margin 实现，但必须配合
+   宿主裁剪（overflow 容器内负边距会撑出 scrollWidth），改为
+   左右各留 0 并依赖宿主已有 padding 的视觉对齐——直接全宽最稳 */
+hr.rgf-sep {
+  height: 1px;
+  width: auto;
+  margin: 8px 0 0;
+  background: var(--color-border-muted, #d1d9e0b3);
+  border: none;
 }
 
 .rgf-block-title {

@@ -46,8 +46,9 @@ const DIM_LABELS = { actor: '发起者', repo: '仓库', event: '事件', keywor
 
 function buildBlock() {
   const block = document.createElement('div');
-  // 复用原生间距类：与 Events 分组标题同节奏（tmp-px-3 水平、mt-2 顶部）
-  block.className = `${BLOCK_CLASS} tmp-px-3 mt-2`;
+  // 布局完全自持：不依赖 GitHub 工具类（tmp-* 为内部临时类，定义随版本漂移），
+  // 间距用 Primer 变量取值，视觉与原生一致但不受其改动影响
+  block.className = BLOCK_CLASS;
 
   const title = document.createElement('div');
   title.className = 'rgf-block-title';
@@ -250,39 +251,51 @@ function discardDraft() {
   }
 }
 
-// ---- 注入主流程：幂等，document 级观察器驱动重试（turbo 重渲染安全）----
+// ---- 注入主流程：幂等 + 互斥，document 级观察器驱动重试（turbo 重渲染安全）----
+let injecting = false; // async 注入进行中标志，防观察器并发双份注入
 async function injectPanelBlock() {
+  if (injecting) return;
   const panel = findPanel();
   if (!panel) return;
-  const { menu, host, saveBtn, resetBtn } = panel;
-  if (!loaded) {
-    await loadAndApply();
-  }
-  if (host.querySelector(':scope > .' + BLOCK_CLASS)) return;
+  injecting = true;
+  try {
+    await ensureLoaded();
+    const { host, saveBtn, resetBtn } = panel;
+    if (host.querySelector(':scope > .' + BLOCK_CLASS)) return;
 
-  const block = buildBlock();
+    const block = buildBlock();
 
-  // 挂钩原生 Save / Reset（捕获阶段先于 Catalyst 动作）；找不到 Save 则降级为即改即存
-  if (saveBtn) {
-    saveBtn.addEventListener('click', () => { commitDraft(); }, true);
-  } else {
-    console.warn('[RefinedGithubFeeds] 未找到原生 Save 按钮，注入区块改为即改即存');
-    block.dataset.instantSave = 'true';
-  }
-  if (resetBtn) {
-    resetBtn.addEventListener('click', () => { discardDraft(); }, true);
-  }
+    // 挂钩原生 Save / Reset（捕获阶段先于 Catalyst 动作）；找不到 Save 则降级为即改即存
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => { commitDraft(); }, true);
+    } else {
+      console.warn('[RefinedGithubFeeds] 未找到原生 Save 按钮，注入区块改为即改即存');
+      block.dataset.instantSave = 'true';
+    }
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => { discardDraft(); }, true);
+    }
 
-  // 组间分隔：与原生分组一致使用 hr；先清理残留再注入，防止重注入时堆积错位
-  for (const stale of host.querySelectorAll(':scope > hr[data-rgf-sep]')) {
-    stale.remove();
+    // 组间分隔 + 区块；注入前清理残留，保证任何重渲染路径下不堆积
+    for (const stale of host.querySelectorAll(':scope > hr.rgf-sep')) stale.remove();
+    host.appendChild(buildSeparator());
+    host.appendChild(block);
+    renderRuleList(block);
+  } finally {
+    injecting = false;
   }
+}
+
+function ensureLoaded() {
+  if (loaded) return Promise.resolve();
+  return loadAndApply();
+}
+
+function buildSeparator() {
   const sep = document.createElement('hr');
-  sep.className = 'mb-0 tmp-mx-3';
+  sep.className = 'rgf-sep';
   sep.dataset.rgfSep = 'true';
-  host.appendChild(sep);
-  host.appendChild(block);
-  renderRuleList(block);
+  return sep;
 }
 
 const panelObserver = new MutationObserver(() => injectPanelBlock());
