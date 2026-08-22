@@ -50,6 +50,7 @@
 </script>
 <link rel="stylesheet" href="../src/content.css" />
 <link rel="stylesheet" href="../src/panel.css" />
+<style>body{font:14px system-ui;padding:16px;} article.js-feed-item-component{border:1px solid #d1d9e0;border-radius:6px;padding:12px;margin-bottom:8px;position:relative;}</style>
 </head>
 <body>
 <main>
@@ -71,19 +72,37 @@
       <p>forked a repository</p>
     </article>
   </feed-container></div></div>
-</main>
+
+  <!-- 原生 Filter 面板：按登录态抓取的真实结构复刻 -->
   <details id="feed-filter-menu">
     <summary>Filter</summary>
-    <div class="rgf-native-body">
-      <div>Activity you want to see on your feed</div>
-      <label><input type="checkbox" checked /> Announcements</label>
-      <label><input type="checkbox" checked /> Releases</label>
-      <label><input type="checkbox" checked /> Sponsors</label>
-      <label><input type="checkbox" checked /> Stars</label>
-      <button type="button">Save</button>
-      <button type="button">Reset to default</button>
-    </div>
+    <feed-filter data-target="feed-container.filter" class="overflow-hidden d-flex flex-column">
+      <div class="SelectMenu-header js-navigation-enable d-flex flex-justify-between" tabindex="-1">
+        <span class="SelectMenu-title">Filter</span>
+        <button class="SelectMenu-closeButton" type="button" aria-label="Close menu">✕</button>
+      </div>
+      <div class="pt-2 overflow-auto">
+        <div class="tmp-px-3 mt-2">
+          <h5 class="d-flex flex-items-center">Events</h5>
+          <p class="small color-fg-muted mt-1">Activity you want to see on your feed</p>
+        </div>
+        <div class="SelectMenu-list SelectMenu-list--borderless" role="menu">
+          <label data-action="click:feed-filter#handleToggle" class="SelectMenu-item" data-selected="false" data-name="Announcements">
+            <input type="checkbox" data-targets="feed-filter.inputs" name="Announcements"> Announcements
+          </label>
+          <label data-action="click:feed-filter#handleToggle" class="SelectMenu-item" data-selected="true" data-name="Stars">
+            <input type="checkbox" data-targets="feed-filter.inputs" name="Stars" checked=""> Stars
+          </label>
+        </div>
+      </div>
+      <hr class="m-0 color-fg-muted">
+      <div class="p-2 d-flex flex-justify-end">
+        <button data-action="click:feed-filter#resetFilterToDefault" type="button">Reset to default</button>
+        <button data-action="click:feed-filter#handleApply" data-toggle-for="feed-filter-menu" data-target="feed-filter.applyButton" type="button">Save</button>
+      </div>
+    </feed-filter>
   </details>
+</main>
 <script src="../src/shared.js"></script>
 <script src="../src/content.js"></script>
 <script src="../src/panel.js"></script>

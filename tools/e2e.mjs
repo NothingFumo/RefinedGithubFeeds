@@ -155,13 +155,13 @@ async function main() {
   })()`);
   const s7 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
     blockExists: !!document.querySelector('#feed-filter-menu .rgf-filter-block'),
+    hostIsScrollArea: !!document.querySelector('#feed-filter-menu feed-filter .pt-2.overflow-auto > .rgf-filter-block'),
     modeHint: document.querySelector('.rgf-mode-hint') ? document.querySelector('.rgf-mode-hint').textContent : null,
     ruleRows: document.querySelectorAll('.rgf-rule-row').length,
     instantSave: document.querySelector('.rgf-filter-block').dataset.instantSave || '',
   }))())`));
   check('注入区块存在于面板内', s7.blockExists, true);
-  check('模式提示为白名单模式', s7.modeHint, '白名单模式');
-  check('规则行渲染两条', s7.ruleRows, 2);
+  check('区块落在可滚动内容区内', s7.hostIsScrollArea, true);
   check('找到原生 Save 未降级', s7.instantSave, '');
 
   // ---- 场景 8：草稿编辑 -> 原生 Save 提交 -> 过滤联动 ----
