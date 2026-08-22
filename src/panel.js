@@ -273,6 +273,16 @@ async function injectPanelBlock() {
       resetBtn.addEventListener('click', () => { discardDraft(); }, true);
     }
 
+    // 清理历史遗留/竞态产生的孤儿节点（宿主外的分隔符与区块）
+    for (const orphan of document.querySelectorAll(
+      `hr[data-rgf-sep]:not(${CSS.escape(host.localName)} hr[data-rgf-sep] *):not(${CSS.escape(host.localName)} > hr[data-rgf-sep])`,
+    )) {
+      if (!host.contains(orphan)) orphan.remove();
+    }
+    for (const orphan of document.querySelectorAll('.' + BLOCK_CLASS)) {
+      if (!host.contains(orphan)) orphan.remove();
+    }
+
     // 组间分隔 + 区块；注入前清理残留，保证任何重渲染路径下不堆积
     for (const stale of host.querySelectorAll(':scope > hr[data-rgf-sep]')) stale.remove();
     host.appendChild(buildSeparator());
