@@ -47,13 +47,6 @@ function buildBlock() {
   return block;
 }
 
-function markDraftDirty(block) {
-  const mark = block.querySelector('.rgf-draft-mark');
-  if (mark) {
-    mark.textContent = '未保存';
-    mark.hidden = false;
-  }
-}
 
 // ---- 注入主流程：幂等 + 互斥，document 级观察器驱动重试（turbo 重渲染安全）----
 let injecting = false; // async 注入进行中标志，防观察器并发双份注入
@@ -72,16 +65,10 @@ async function injectPanelBlock() {
 
     // 挂钩原生 Save / Reset（捕获阶段先于 Catalyst 动作）；找不到 Save 则降级为即改即存
     if (saveBtn) {
-      saveBtn.addEventListener('click', () => { commitSubFilters(); }, true);
+      // 类型开关即时生效，原生 Save 仅承载 GitHub 自身偏好
     } else {
       console.warn('[RefinedGithubFeeds] 未找到原生 Save 按钮，注入区块改为即改即存');
       block.dataset.instantSave = 'true';
-    }
-    if (resetBtn) {
-      resetBtn.addEventListener('click', () => {
-        discardSubDraft();
-        renderSubFilters(block);
-      }, true);
     }
 
     // 清理历史遗留/竞态产生的孤儿节点（宿主外的分隔符与区块）
@@ -122,9 +109,7 @@ const CARD_TYPE_DEFS = [
 ];
 const SUBFILTER_KEY = 'rgf.allowedTypes'; // 白名单：勾选的 card_type 才显示
 
-let draftAllowed = null;    // 白名单草稿：与范围开关同随原生 Save 提交
-let subFilterBase = null;   // 已提交的排除集合基线
-let scopeBase = null;       // 已提交的范围开关基线
+let allowedCardTypesLive = null; // 白名单实时视图（panel 与 storage 同步）
 const FOLLOWERS_KEY = 'rgf.followers';
 const FOLLOWERS_AT_KEY = 'rgf.followersAt';
 const SCOPE_KEY = 'rgf.scope';
@@ -135,8 +120,10 @@ let followersCache = [];    // 当前已缓存名单（用于显示数量）
 
 async function buildSubFilters(block) {
   const stored = await chrome.storage.sync.get([SUBFILTER_KEY, SCOPE_KEY, FOLLOWERS_KEY, FOLLOWERS_AT_KEY]);
-  subFilterBase = Array.isArray(stored[SUBFILTER_KEY]) ? new Set(stored[SUBFILTER_KEY]) : null;
-  if (draftAllowed === null) draftAllowed = subFilterBase ? new Set(subFilterBase) : new Set();
+  // 白名单语义：键不存在 = 未配置 = 全部类型显示；存在则只显示集合内类型
+  allowedCardTypesLive = Array.isArray(stored[SUBFILTER_KEY])
+    ? new Set(stored[SUBFILTER_KEY])
+    : new Set(CARD_TYPE_DEFS.map(([t]) => t));
   scopeState = Object.assign({ onlyFollowers: false, onlyMyRepos: false }, stored[SCOPE_KEY]);
   followersCache = stored[FOLLOWERS_KEY] || [];
   const followersAt = stored[FOLLOWERS_AT_KEY] || 0;
@@ -144,7 +131,7 @@ async function buildSubFilters(block) {
   const section = document.createElement('div');
   section.className = 'rgf-subfilters';
 
-  // ---- 发起者范围开关（与类型开关交叉生效）----
+  // ---- 发起者范围开关（切换立即写入并重过滤）----
   const scopeBox = document.createElement('div');
   scopeBox.className = 'rgf-scope-box my-2';
   for (const [key, label, hint] of [
@@ -158,9 +145,10 @@ async function buildSubFilters(block) {
     chk.checked = !!scopeState[key];
     chk.dataset.scope = key;
     chk.title = hint;
-    chk.addEventListener('change', () => {
+    chk.addEventListener('change', async () => {
       scopeState[key] = chk.checked;
-      markDraftDirty(block);
+      await chrome.storage.sync.set({ [SCOPE_KEY]: scopeState });
+      applyFilter(); // storage 监听也会触发，这里主动调一次保证即时性
     });
     const lbl = document.createElement('span');
     lbl.className = 'ml-2';
@@ -168,7 +156,7 @@ async function buildSubFilters(block) {
     rowEl.append(chk, lbl);
     scopeBox.appendChild(rowEl);
   }
-  // 关注者名单刷新行：过期时间 + 手动刷新按钮
+  // 关注者名单刷新行
   const refreshRow = document.createElement('div');
   refreshRow.className = 'small color-fg-muted tmp-px-3 pb-2 d-flex flex-items-center';
   const age = Date.now() - followersAt;
@@ -183,9 +171,6 @@ async function buildSubFilters(block) {
     refreshBtn.textContent = '抓取中…';
     try {
       const n = await fetchFollowers();
-      refreshRow.firstChild?.remove();
-      refreshRow.insertBefore(document.createTextNode(`关注者名单刚刚更新（${n} 人）`), refreshBtn);
-      await chrome.storage.sync.get([FOLLOWERS_AT_KEY]).then(() => {});
       loadAndApply();
     } catch (e) {
       refreshBtn.textContent = '抓取失败';
@@ -196,7 +181,7 @@ async function buildSubFilters(block) {
   scopeBox.appendChild(refreshRow);
   section.appendChild(scopeBox);
 
-  // ---- 卡片类型开关（按语义分组展示）----
+  // ---- 卡片类型开关（按语义分组展示；切换立即生效）----
   const groups = [
     ['社交动态', ['STARRED_REPOSITORY', 'FORKED_REPOSITORY']],
     ['仓库活动', ['MERGED_PULL_REQUEST', 'RELEASE', 'PRIVATE_TO_PUBLIC_REPOSITORY']],
@@ -212,11 +197,12 @@ async function buildSubFilters(block) {
       rowEl.className = 'rgf-sub-row d-flex flex-items-center my-1 tmp-px-3 text-normal SelectMenu-item';
       const chk = document.createElement('input');
       chk.type = 'checkbox';
-      chk.checked = draftAllowed ? draftAllowed.has(type) : true; // 勾选=显示
+      chk.checked = allowedCardTypesLive.has(type); // 勾选=显示该类型
       chk.dataset.cardType = type;
-      chk.addEventListener('change', () => {
-        if (chk.checked) { draftAllowed.add(type); } else { draftAllowed.delete(type); }
-        markDraftDirty(block);
+      chk.addEventListener('change', async () => {
+        if (chk.checked) { allowedCardTypesLive.add(type); } else { allowedCardTypesLive.delete(type); }
+        await chrome.storage.sync.set({ [SUBFILTER_KEY]: [...allowedCardTypesLive] });
+        applyFilter();
       });
       const lbl = document.createElement('span');
       lbl.className = 'ml-2';
@@ -252,37 +238,6 @@ async function fetchFollowers() {
   return unique.length;
 }
 
-function scopeChanged() {
-  return JSON.stringify(scopeState) !== JSON.stringify(scopeBase);
-}
-
-function subFiltersChanged() {
-  if (scopeChanged()) return true;
-  if (subFilterBase === null) return false; // 从未配置过则无变化
-  const base = subFilterBase, draft = draftAllowed;
-  return draft.size !== base.size || [...draft].some((t) => !base.has(t)) || [...base].some((t) => !draft.has(t));
-}
-
-async function commitSubFilters() {
-  if (!subFiltersChanged()) {
-    discardSubDraft();
-    return false;
-  }
-  const update = { [SUBFILTER_KEY]: [...draftAllowed], [SCOPE_KEY]: scopeState };
-  await chrome.storage.sync.set(update);
-  subFilterBase = new Set(draftAllowed);
-  scopeBase = { ...scopeState };
-  discardSubDraft();
-  applyFilter();
-  return true;
-}
-
-function discardSubDraft() {
-  if (draftAllowed !== null && subFilterBase !== null) {
-    draftAllowed = new Set(subFilterBase);
-  }
-  if (scopeBase) scopeState = { ...scopeBase };
-}
 function buildSeparator() {
   const sep = document.createElement('hr');
   sep.className = 'mb-0 tmp-mx-3';   // 原生组间分隔的准确标记
