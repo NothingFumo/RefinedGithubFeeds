@@ -97,15 +97,16 @@ function ensureLoaded() {
 }
 
 // ---- 细粒度卡片类型过滤：按 card_type 精确排除，独立于规则与原生勾选 ----
+// card_type -> 原生分组映射（content.js 快捷按钮与面板开关共用）
 const CARD_TYPE_DEFS = [
-  ['STARRED_REPOSITORY', 'Star（仓库被 star）'],
-  ['FORKED_REPOSITORY', 'Fork（仓库被 fork）'],
-  ['MERGED_PULL_REQUEST', 'PR 合并'],
-  ['RELEASE', 'Release 发布'],
-  ['ADDED_TO_LIST', '加入 Star List'],
-  ['REPOSITORY_RECOMMENDATION', '算法推荐'],
-  ['TRENDING_REPOSITORY', '趋势榜'],
-  ['PRIVATE_TO_PUBLIC_REPOSITORY', '私有转公开'],
+  ['STARRED_REPOSITORY', 'Star（仓库被 star）', 'Stars'],
+  ['FORKED_REPOSITORY', 'Fork（仓库被 fork）', 'Repositories'],
+  ['MERGED_PULL_REQUEST', 'PR 合并', 'RepositoryActivity'],
+  ['RELEASE', 'Release 发布', 'Releases'],
+  ['ADDED_TO_LIST', '加入 Star List', 'Recommendations'],
+  ['REPOSITORY_RECOMMENDATION', '算法推荐', 'Recommendations'],
+  ['TRENDING_REPOSITORY', '趋势榜', 'Recommendations'],
+  ['PRIVATE_TO_PUBLIC_REPOSITORY', '私有转公开', 'Repositories'],
 ];
 
 const FOLLOWERS_KEY = 'rgf.followers';

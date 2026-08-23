@@ -163,12 +163,17 @@ function attachQuickButtons(el) {
   wrap.className = BTN_CLASS;
   const item = extractItem(el);
   // 快捷操作：隐藏该卡片类型（从白名单移除），与面板更细过滤联动
-  if (item.cardType) {
-    wrap.appendChild(makeQuickBtn(`隐藏此类动态`, async () => {
-      const stored = await chrome.storage.sync.get(['rgf.allowedTypes']);
-      const cur = Array.isArray(stored['rgf.allowedTypes']) ? new Set(stored['rgf.allowedTypes']) : new Set();
-      cur.delete(item.cardType);
-      await chrome.storage.sync.set({ 'rgf.allowedTypes': [...cur] });
+  if (item.cardType && CARD_TYPE_TO_NATIVE[item.cardType]) {
+    const nativeGroup = CARD_TYPE_TO_NATIVE[item.cardType];
+    wrap.appendChild(makeQuickBtn(`隐藏此类动态`, () => {
+      // 联动原生面板：取消勾选该类型所在的原生分组复选框，
+      // 面板开关状态与过滤行为同步（原生增强语义）
+      const target = document.querySelector(
+        `#feed-filter-menu input[data-targets="feed-filter.inputs"][name="${nativeGroup}"]`);
+      if (target) {
+        target.checked = false;
+        applyFilter(); // 前端即时隐藏
+      }
     }));
   }
   if (wrap.children.length > 0) {

@@ -94,6 +94,18 @@ function extractItem(el) {
   };
 }
 
+// card_type -> 原生分组映射（快捷按钮与面板开关共用；实抓校准）
+const CARD_TYPE_TO_NATIVE = {
+  STARRED_REPOSITORY: 'Stars',
+  FORKED_REPOSITORY: 'Repositories',
+  MERGED_PULL_REQUEST: 'RepositoryActivity',
+  RELEASE: 'Releases',
+  ADDED_TO_LIST: 'Recommendations',
+  REPOSITORY_RECOMMENDATION: 'Recommendations',
+  TRENDING_REPOSITORY: 'Recommendations',
+  PRIVATE_TO_PUBLIC_REPOSITORY: 'Repositories',
+};
+
 // 当前登录用户名（GitHub 在页面 meta 中注入，任意语言界面可用）
 function currentUser() {
   return document.querySelector('meta[name="user-login"]')?.getAttribute('content') || null;
