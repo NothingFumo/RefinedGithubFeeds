@@ -190,7 +190,7 @@ async function main() {
       subFilters: !!block.querySelector('.rgf-subfilters'),
       subChecks: block.querySelectorAll('.rgf-subfilters input[data-card-type]').length,
       scopeToggles: block.querySelectorAll('input[data-scope]').length,
-      groups: [...block.querySelectorAll('.rgf-group-title')].map(g => g.textContent),
+      groups: [...block.querySelectorAll('.rgf-subfilters h5')].map(g => g.textContent).filter(t => ['社交动态','仓库活动','发现内容'].includes(t)),
       // 几何对齐度量：区块与原生分组的左右内边距起点应一致
       blockLeft: Math.round(b.left),
       nativeLeft: n ? Math.round(n.left) : null,
