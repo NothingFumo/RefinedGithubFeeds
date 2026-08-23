@@ -165,7 +165,7 @@ function attachQuickButtons(el) {
   // 快捷操作：隐藏该卡片类型（从白名单移除），与面板更细过滤联动
   if (item.cardType && CARD_TYPE_TO_NATIVE[item.cardType]) {
     const nativeGroup = CARD_TYPE_TO_NATIVE[item.cardType];
-    wrap.appendChild(makeQuickBtn(`隐藏此类动态`, () => {
+    wrap.appendChild(makeQuickBtn(t('hideThisType'), () => {
       // 联动原生面板：取消勾选该类型所在的原生分组复选框，
       // 面板开关状态与过滤行为同步（原生增强语义）
       const target = document.querySelector(

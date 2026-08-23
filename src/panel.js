@@ -99,14 +99,14 @@ function ensureLoaded() {
 // ---- 细粒度卡片类型过滤：按 card_type 精确排除，独立于规则与原生勾选 ----
 // card_type -> 原生分组映射（content.js 快捷按钮与面板开关共用）
 const CARD_TYPE_DEFS = [
-  ['STARRED_REPOSITORY', 'Star（仓库被 star）', 'Stars'],
-  ['FORKED_REPOSITORY', 'Fork（仓库被 fork）', 'Repositories'],
-  ['MERGED_PULL_REQUEST', 'PR 合并', 'RepositoryActivity'],
-  ['RELEASE', 'Release 发布', 'Releases'],
-  ['ADDED_TO_LIST', '加入 Star List', 'Recommendations'],
-  ['REPOSITORY_RECOMMENDATION', '算法推荐', 'Recommendations'],
-  ['TRENDING_REPOSITORY', '趋势榜', 'Recommendations'],
-  ['PRIVATE_TO_PUBLIC_REPOSITORY', '私有转公开', 'Repositories'],
+  ['STARRED_REPOSITORY', 'typeStar', 'Stars'],
+  ['FORKED_REPOSITORY', 'typeFork', 'Repositories'],
+  ['MERGED_PULL_REQUEST', 'typePrMerged', 'RepositoryActivity'],
+  ['RELEASE', 'typeRelease', 'Releases'],
+  ['ADDED_TO_LIST', 'typeAddedToList', 'Recommendations'],
+  ['REPOSITORY_RECOMMENDATION', 'typeRecommendation', 'Recommendations'],
+  ['TRENDING_REPOSITORY', 'typeTrending', 'Recommendations'],
+  ['PRIVATE_TO_PUBLIC_REPOSITORY', 'typeVisibility', 'Repositories'],
 ];
 
 const FOLLOWERS_KEY = 'rgf.followers';
@@ -123,18 +123,30 @@ async function buildSubFilters(block) {
   followersCache = stored[FOLLOWERS_KEY] || [];
   const followersAt = stored[FOLLOWERS_AT_KEY] || 0;
 
+  // 复用原生 SelectMenu 标记：与 Events 分组完全同构（tmp-px-3 mt-2 标题组 + SelectMenu-list）
   const section = document.createElement('div');
   section.className = 'rgf-subfilters';
 
-  // ---- 发起者范围开关（扩展独有增强；切换立即重过滤）----
-  const scopeBox = document.createElement('div');
-  scopeBox.className = 'rgf-scope-box my-2';
+  // ---- 发起者范围 ----
+  const scopeHead = document.createElement('div');
+  scopeHead.className = 'tmp-px-3 mt-2';
+  const scopeH5 = document.createElement('h5');
+  scopeH5.className = 'd-flex flex-items-center';
+  scopeH5.textContent = t('scopeTitle');
+  scopeHead.appendChild(scopeH5);
+  section.appendChild(scopeHead);
+
+  const scopeList = document.createElement('div');
+  scopeList.className = 'SelectMenu-list SelectMenu-list--borderless';
+  scopeList.setAttribute('role', 'menu');
   for (const [key, label, hint] of [
-    ['onlyMyRepos', '只看我仓库的动态', '条目仓库属于当前账号'],
-    ['onlyFollowers', `只看关注者的动态（${followersCache.length} 人）`, '发起者在你的关注者名单中'],
+    ['onlyMyRepos', t('onlyMyRepos'), t('onlyMyReposHint')],
+    ['onlyFollowers', t('followersCount')(followersCache.length), t('onlyFollowersHint')],
   ]) {
     const rowEl = document.createElement('label');
-    rowEl.className = 'rgf-sub-row d-flex flex-items-center my-1 tmp-px-3 text-normal SelectMenu-item';
+    rowEl.className = 'd-flex pl-0 my-2 tmp-px-3 flex-column flex-items-start text-normal SelectMenu-item js-navigation-item';
+    const headWrap = document.createElement('div');
+    headWrap.className = 'd-flex flex-items-center';
     const chk = document.createElement('input');
     chk.type = 'checkbox';
     chk.checked = !!scopeState[key];
@@ -145,99 +157,103 @@ async function buildSubFilters(block) {
       await chrome.storage.sync.set({ [SCOPE_KEY]: scopeState });
       applyFilter();
     });
-    const lbl = document.createElement('span');
-    lbl.className = 'ml-2';
+    const lbl = document.createElement('h5');
+    lbl.className = 'd-flex flex-items-center ml-2 mb-0';
     lbl.textContent = label;
-    rowEl.append(chk, lbl);
-    scopeBox.appendChild(rowEl);
+    headWrap.append(chk, lbl);
+    rowEl.appendChild(headWrap);
+    scopeList.appendChild(rowEl);
   }
-  // 关注者名单刷新行
+  // 关注者名单刷新行：原生条目描述样式
   const refreshRow = document.createElement('div');
-  refreshRow.className = 'small color-fg-muted tmp-px-3 pb-2 d-flex flex-items-center';
+  refreshRow.className = 'd-flex flex-column tmp-px-3 pb-2';
+  const refreshDesc = document.createElement('span');
+  refreshDesc.className = 'small color-fg-muted mt-1';
   const age = Date.now() - followersAt;
   const stale = !followersAt || age > FOLLOWERS_TTL;
-  refreshRow.textContent = stale ? '关注者名单未缓存或已过期' : `关注者名单 ${Math.ceil(age / 3600000)} 小时前更新`;
+  refreshDesc.textContent = stale ? t('followersStale') : t('followersAge')(Math.max(1, Math.ceil(age / 3600000)));
+  refreshDesc.style.marginLeft = '21px';
   const refreshBtn = document.createElement('button');
   refreshBtn.type = 'button';
-  refreshBtn.className = 'Button Button--invisible Button--small ml-auto rgf-refresh-btn';
-  refreshBtn.textContent = '刷新名单';
+  refreshBtn.className = 'Button Button--invisible Button--small rgf-refresh-btn';
+  refreshBtn.textContent = t('refreshList');
   refreshBtn.addEventListener('click', async () => {
     refreshBtn.disabled = true;
-    refreshBtn.textContent = '抓取中…';
+    refreshBtn.textContent = t('fetching');
     try {
       await fetchFollowers();
       loadAndApply();
     } catch (e) {
-      refreshBtn.textContent = '抓取失败';
+      refreshBtn.textContent = t('fetchFailed');
     }
-    setTimeout(() => { refreshBtn.disabled = false; refreshBtn.textContent = '刷新名单'; }, 3000);
+    setTimeout(() => { refreshBtn.disabled = false; refreshBtn.textContent = t('refreshList'); }, 3000);
   });
-  refreshRow.appendChild(refreshBtn);
-  scopeBox.appendChild(refreshRow);
-  section.appendChild(scopeBox);
+  refreshRow.append(refreshDesc, refreshBtn);
+  scopeList.appendChild(refreshRow);
+  section.appendChild(scopeList);
 
-  // ---- 细粒度卡片类型开关：直接驱动原生复选框（真正的原生增强）----
-  // 每个开关映射到原生分组的一个 card_type 子集；切换时改写原生
-  // checkbox 的 checked 并触发 feed-filter Catalyst 重载，
-  // 使服务端偏好与前端状态保持一致。
+  // ---- 卡片类型分组（每组复刻原生"标题组 + list"结构）----
   const groups = [
-    ['社交动态', [
-      ['STARRED_REPOSITORY', 'Star（仓库被 star）', 'Stars'],
-      ['FORKED_REPOSITORY', 'Fork（仓库被 fork）', 'Repositories'],
+    [t('groupSocial'), [
+      ['STARRED_REPOSITORY', 'typeStar', 'Stars'],
+      ['FORKED_REPOSITORY', 'typeFork', 'Repositories'],
     ]],
-    ['仓库活动', [
-      ['MERGED_PULL_REQUEST', 'PR 合并', 'RepositoryActivity'],
-      ['RELEASE', 'Release 发布', 'Releases'],
-      ['PRIVATE_TO_PUBLIC_REPOSITORY', '私有转公开', 'Repositories'],
+    [t('groupRepoActivity'), [
+      ['MERGED_PULL_REQUEST', 'typePrMerged', 'RepositoryActivity'],
+      ['RELEASE', 'typeRelease', 'Releases'],
+      ['PRIVATE_TO_PUBLIC_REPOSITORY', 'typeVisibility', 'Repositories'],
     ]],
-    ['发现内容', [
-      ['ADDED_TO_LIST', '加入 Star List', 'Recommendations'],
-      ['REPOSITORY_RECOMMENDATION', '算法推荐', 'Recommendations'],
-      ['TRENDING_REPOSITORY', '趋势榜', 'Recommendations'],
+    [t('groupDiscover'), [
+      ['ADDED_TO_LIST', 'typeAddedToList', 'Recommendations'],
+      ['REPOSITORY_RECOMMENDATION', 'typeRecommendation', 'Recommendations'],
+      ['TRENDING_REPOSITORY', 'typeTrending', 'Recommendations'],
     ]],
   ];
-  const nativeInputs = () => {
-    const map = {};
+  for (const [groupLabel, defs] of groups) {
+    const head = document.createElement('div');
+    head.className = 'tmp-px-3 mt-2';
+    const h5 = document.createElement('h5');
+    h5.className = 'd-flex flex-items-center';
+    h5.textContent = groupLabel;
+    head.appendChild(h5);
+    section.appendChild(head);
+
+    const list = document.createElement('div');
+    list.className = 'SelectMenu-list SelectMenu-list--borderless';
+    list.setAttribute('role', 'menu');
+    const nativeInputs = {};
     for (const inp of document.querySelectorAll(
       '#feed-filter-menu input[data-targets="feed-filter.inputs"][name]')) {
-      map[inp.name] = inp;
+      nativeInputs[inp.name] = inp;
     }
-    return map;
-  };
-
-  for (const [groupLabel, defs] of groups) {
-    const gTitle = document.createElement('div');
-    gTitle.className = 'rgf-group-title small text-bold color-fg-default tmp-px-3 mt-2';
-    gTitle.textContent = groupLabel;
-    section.appendChild(gTitle);
-    for (const [type, label, nativeGroup] of defs) {
+    for (const [type, labelKey, nativeGroup] of defs) {
       const rowEl = document.createElement('label');
-      rowEl.className = 'rgf-sub-row d-flex flex-items-center my-1 tmp-px-3 text-normal SelectMenu-item';
+      rowEl.className = 'd-flex pl-0 my-2 tmp-px-3 flex-column flex-items-start text-normal SelectMenu-item js-navigation-item';
+      const headWrap = document.createElement('div');
+      headWrap.className = 'd-flex flex-items-center';
       const chk = document.createElement('input');
       chk.type = 'checkbox';
-      // 初始态跟随原生分组勾选（同组内所有子类型共享父开关状态）
-      const nInput = nativeInputs()[nativeGroup];
+      // 初始态跟随原生分组勾选（同组子类型共享父开关状态）
+      const nInput = nativeInputs[nativeGroup];
       chk.checked = nInput ? nInput.checked : true;
       chk.dataset.cardType = type;
       chk.dataset.nativeGroup = nativeGroup;
       chk.addEventListener('change', () => {
-        // 驱动原生复选框：勾选=恢复该组显示，取消=隐藏整组
-        const map = nativeInputs();
-        const target = map[nativeGroup];
-        if (target) {
-          if (target.checked !== chk.checked) {
-            target.checked = chk.checked;
-            target.dispatchEvent(new Event('click', { bubbles: true }));
-          }
+        // 驱动原生复选框，保持服务端偏好一致
+        if (nativeInputs[nativeGroup] && nativeInputs[nativeGroup].checked !== chk.checked) {
+          nativeInputs[nativeGroup].checked = chk.checked;
+          nativeInputs[nativeGroup].dispatchEvent(new Event('click', { bubbles: true }));
         }
-        applyFilter(); // 前端即时反馈
+        applyFilter();
       });
-      const lbl = document.createElement('span');
-      lbl.className = 'ml-2';
-      lbl.textContent = label;
-      rowEl.append(chk, lbl);
-      section.appendChild(rowEl);
+      const title = document.createElement('h5');
+      title.className = 'd-flex flex-items-center ml-2 mb-0';
+      title.textContent = t(labelKey);
+      headWrap.append(chk, title);
+      rowEl.appendChild(headWrap);
+      list.appendChild(rowEl);
     }
+    section.appendChild(list);
   }
   block.appendChild(section);
 }
