@@ -76,6 +76,15 @@ async function main() {
   })()`);
   await evaljs(ws, `__rgfReady`);
 
+  // 基线：勾选全部原生分组（模拟用户在原生面板全启用的状态）
+  await evaljs(ws, `(() => {
+    for (const inp of document.querySelectorAll('#feed-filter-menu input[data-targets="feed-filter.inputs"]')) {
+      inp.checked = true;
+    }
+    applyFilter();
+    return 'baseline';
+  })()`);
+
   // ---- 场景 1：未配置白名单时全部显示 ----
   const s1 = await evaljs(ws, `JSON.stringify((() => ({
     badge: document.querySelector('#rgf-badge').textContent,
@@ -258,6 +267,33 @@ async function main() {
   check('宿主外孤儿区块被自动清扫', true, true);
 
   // ---- 场景 8e：细粒度开关驱动原生复选框（原生增强）----
+  // ---- 场景 8d：快捷按钮「隐藏此类动态」联动原生面板复选框 ----
+  await evaljs(ws, `(() => {
+    // 点击 spammer 条目（FORKED）的快捷按钮
+    const btn = document.querySelector('#item-spammer .rgf-quick-btn button');
+    btn.click();
+    // 联动断言：原生 Repositories 复选框应被取消勾选
+    const native = document.querySelector('#feed-filter-menu input[name="Repositories"]');
+    return JSON.stringify({ nativeChecked: native ? native.checked : null });
+  })()`);
+  const qbtn = JSON.parse(await evaljs(ws, `JSON.stringify((() => {
+    const native = document.querySelector('#feed-filter-menu input[name="Repositories"]');
+    return {
+      nativeExists: !!native,
+      nativeChecked: native ? native.checked : null,
+      spammerHidden: document.querySelector('#item-spammer').style.display === 'none',
+    };
+  })())`));
+  check('原生 Repositories 分组存在', qbtn.nativeExists, true);
+  check('快捷按钮取消勾选原生分组', qbtn.nativeChecked, false);
+  check('快捷按钮后条目即时隐藏', qbtn.spammerHidden, true);
+  // 恢复：重新勾选原生分组
+  await evaljs(ws, `(() => {
+    const inp = document.querySelector('#feed-filter-menu input[name="Repositories"]');
+    if (inp) { inp.checked = true; applyFilter(); }
+    return 'restored';
+  })()`);
+
   await evaljs(ws, `(() => {
     const chk = document.querySelector('.rgf-subfilters input[data-card-type="RELEASE"]');
     if (!chk) throw new Error('subfilter missing');
@@ -275,6 +311,21 @@ async function main() {
     if (chk) { chk.checked = true; chk.dispatchEvent(new Event('change')); }
     return 'restored';
   })()`);
+
+  // ---- 场景 9f：全部勾选 + Save 后所有条目显示（回归保护）----
+  await evaljs(ws, `(async () => {
+    for (const chk of document.querySelectorAll('.rgf-subfilters input[data-card-type]')) {
+      chk.checked = true;
+      chk.dispatchEvent(new Event('change'));
+    }
+    [...document.querySelectorAll('#feed-filter-menu button')].find(b => b.textContent.trim() === 'Save').click();
+    return 'saved-all';
+  })()`);
+  await new Promise((r) => setTimeout(r, 700));
+  const s13 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
+    hidden: [...document.querySelectorAll('article.js-feed-item-component')].filter(e => e.style.display === 'none').map(e => e.id),
+  }))())`));
+  check('全勾选后无隐藏条目', s13.hidden.length, 0);
 
   let failed = 0;
   for (const c of CHECKS) {
