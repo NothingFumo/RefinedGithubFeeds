@@ -54,10 +54,8 @@ function updateBadge(hiddenCount) {
 
 // ---- 过滤主流程 ----
 
-// 角色范围：rgf.scope = { roleMode: 'all'|'self'|'followers'|'orgs'|'users', onlyMyRepos: bool }
+// 角色范围：rgf.scope = { roleMode: 'all'|'self'|'orgs'|'users', onlyMyRepos: bool }
 let scopeFilter = { roleMode: 'all', onlyMyRepos: false };
-// 关注者名单缓存（panel.js 抓取写入 rgf.followers + rgf.followersAt）
-let followersSet = null;
 
 function readNativeSelection() {
   const checked = new Set();
@@ -86,8 +84,6 @@ function isExcluded(item, unchecked) {
     const isSelf = !!me && actorLower === me.toLowerCase();
     const isOrg = !!item.actorEl && item.actorEl.getAttribute('data-hovercard-type') === 'organization';
     if (roleMode === 'self' && !isSelf) return true;
-    if (roleMode === 'followers' && !isSelf &&
-        followersSet && !followersSet.has(actorLower)) return true;
     if (roleMode === 'orgs' && !isOrg) return true;
     if (roleMode === 'users' && (isSelf || isOrg)) return true;
   }
@@ -160,7 +156,7 @@ function attachQuickButtons(el) {
   // 快捷操作：隐藏该卡片类型（取消对应原生分组勾选），与面板开关联动
   if (item.cardType && CARD_TYPE_TO_NATIVE[item.cardType]) {
     const nativeGroup = CARD_TYPE_TO_NATIVE[item.cardType];
-    wrap.appendChild(makeQuickBtn(t('hideThisType'), () => {
+    wrap.appendChild(makeQuickBtn('隐藏此类动态', () => {
       // 联动原生面板：取消勾选该类型所在的原生分组复选框，
       // 面板开关状态与过滤行为同步（原生增强语义）
       const target = document.querySelector(
@@ -191,17 +187,16 @@ function makeQuickBtn(label, onClick) {
 // ---- 初始化与监听 ----
 async function loadAndApply() {
   const stored = await chrome.storage.sync.get([
-    STORAGE_ENABLED_KEY, 'rgf.scope', 'rgf.followers',
+    STORAGE_ENABLED_KEY, 'rgf.scope',
   ]);
   enabled = stored[STORAGE_ENABLED_KEY] !== false;
   scopeFilter = Object.assign({ roleMode: 'all', onlyMyRepos: false }, stored['rgf.scope']);
-  followersSet = new Set((stored['rgf.followers'] || []).map((u) => u.toLowerCase()));
   loaded = true;
   applyFilter();
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && (changes['rgf.scope'] || changes['rgf.followers'])) {
+  if (area === 'sync' && changes['rgf.scope']) {
     loadAndApply();
   } else if (area === 'sync' && changes[STORAGE_ENABLED_KEY]) {
     loadAndApply();

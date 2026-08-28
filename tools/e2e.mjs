@@ -210,7 +210,7 @@ async function main() {
   check('开关行完全仿原生结构（图标+描述+selected）', s7.nativeLikeRows, true);
   check('更细过滤分组已注入', s7.subFilters, true);
   check('十种卡片类型开关齐全', s7.subChecks, 10);
-  check('五个角色单选开关齐全（含全部角色）', s7.roleRadios, 5);
+  check('四个角色单选开关齐全（含全部角色）', s7.roleRadios, 4);
   check('只看我仓库独立开关存在', s7.scopeToggles, 1);
   check('类型开关按语义分三组', s7.groups, ['社交动态', '仓库活动', '发现内容']);
 

@@ -6,7 +6,6 @@ const BLOCK_CLASS = 'rgf-filter-block';
 
 // 模块级状态（由 buildSubFilters 填充；loaded 由 content.js 声明共享）
 let scopeState = null;      // { roleMode, onlyMyRepos }
-let followersCache = [];
 
 // ---- 草稿状态 ----
 // 真实结构（登录态抓取）：
@@ -100,11 +99,8 @@ function ensureLoaded() {
   return loadAndApply();
 }
 
-// 存储键：角色范围 / 关注者名单（与 content.js 共享）
+// 存储键：角色范围（与 content.js 共享）
 const SCOPE_KEY = 'rgf.scope';
-const FOLLOWERS_KEY = 'rgf.followers';
-const FOLLOWERS_AT_KEY = 'rgf.followersAt';
-const FOLLOWERS_TTL = 24 * 60 * 60 * 1000;
 
 // 完全仿原生面板行：结构与原生 SelectMenu-item 逐字节同构
 // （图标 + 标题 + 描述；不挂 data-action 以免被原生 Catalyst 控制器接管）
@@ -143,32 +139,30 @@ function makeNativeRow({ name, iconKey, checked, label, desc, input }) {
 
 // 原生分组元数据：图标 + 描述文案（与原生面板一致）
 const NATIVE_GROUP_META = {
-  Announcements: { icon: 'megaphone', descKey: 'descAnnouncements' },
-  Releases: { icon: 'tag', descKey: 'descReleases' },
-  Sponsors: { icon: 'heart', descKey: 'descSponsors' },
-  Stars: { icon: 'star', descKey: 'descStars' },
-  Repositories: { icon: 'repo', descKey: 'descRepositories' },
-  RepositoryActivity: { icon: 'repo', descKey: 'descRepoActivity' },
-  Follows: { icon: 'personAdd', descKey: 'descFollows' },
-  Recommendations: { icon: 'markGithub', descKey: 'descRecommendations' },
+  Announcements: { icon: 'megaphone', desc: '来自仓库的特殊讨论帖' },
+  Releases: { icon: 'tag', desc: '来自仓库的更新帖' },
+  Sponsors: { icon: 'heart', desc: '正在被赞助的相关项目或人物' },
+  Stars: { icon: 'star', desc: '人们正在 star 的仓库' },
+  Repositories: { icon: 'repo', desc: '人们创建或 fork 的仓库' },
+  RepositoryActivity: { icon: 'repo', desc: '来自仓库的 Issue 与拉取请求' },
+  Follows: { icon: 'personAdd', desc: '人们正在关注谁' },
+  Recommendations: { icon: 'markGithub', desc: '你可能喜欢的仓库与人物' },
 };
 
 async function buildSubFilters(block) {
-  const stored = await chrome.storage.sync.get([SCOPE_KEY, FOLLOWERS_KEY, FOLLOWERS_AT_KEY]);
+  const stored = await chrome.storage.sync.get([SCOPE_KEY]);
   scopeState = Object.assign({ roleMode: 'all', onlyMyRepos: false }, stored[SCOPE_KEY]);
-  followersCache = stored[FOLLOWERS_KEY] || [];
-  const followersAt = stored[FOLLOWERS_AT_KEY] || 0;
 
   // 复用原生 SelectMenu 标记：与 Events 分组完全同构（tmp-px-3 mt-2 标题组 + SelectMenu-list）
   const section = document.createElement('div');
   section.className = 'rgf-subfilters';
 
-  // ---- 角色范围（单选：all/self/followers/orgs/users）----
+  // ---- 角色范围（单选：all/self/orgs/users）----
   const scopeHead = document.createElement('div');
   scopeHead.className = 'tmp-px-3 mt-2';
   const scopeH5 = document.createElement('h5');
   scopeH5.className = 'd-flex flex-items-center';
-  scopeH5.textContent = t('roleTitle');
+  scopeH5.textContent = '角色范围';
   scopeHead.appendChild(scopeH5);
   section.appendChild(scopeHead);
 
@@ -176,11 +170,10 @@ async function buildSubFilters(block) {
   scopeList.className = 'SelectMenu-list SelectMenu-list--borderless';
   scopeList.setAttribute('role', 'menu');
   const roleOptions = [
-    ['all', t('scopeAll'), 'person', t('descAllRoles')],
-    ['self', t('roleSelf'), 'person', t('descSelf')],
-    ['followers', t('roleFollowers'), 'personAdd', t('descFollowersRole')],
-    ['orgs', t('roleOrgs'), 'organization', t('descOrgs')],
-    ['users', t('roleUsers'), 'person', t('descUsers')],
+    ['all', '全部角色', 'person', '显示所有发起者的动态'],
+    ['self', '只看我自己的动态', 'person', '仅显示你本人发起的动态'],
+    ['orgs', '只看组织的动态', 'organization', '仅显示组织账号发起的动态'],
+    ['users', '只看其他用户的动态', 'person', '仅显示其他普通用户发起的动态'],
   ];
   const roleMode = scopeState.roleMode || 'all';
   for (const [mode, label, iconKey, desc] of roleOptions) {
@@ -218,56 +211,30 @@ async function buildSubFilters(block) {
     name: 'rgf-my-repos',
     iconKey: 'repo',
     checked: myRepoChk.checked,
-    label: t('onlyMyRepos'),
-    desc: t('descMyRepos'),
+    label: '只看我仓库的动态',
+    desc: '仅显示与你仓库相关的动态',
     input: myRepoChk,
   }));
 
-  // 关注者名单刷新行：原生条目描述样式
-  const refreshRow = document.createElement('div');
-  refreshRow.className = 'd-flex flex-column tmp-px-3 pb-2';
-  const refreshDesc = document.createElement('span');
-  refreshDesc.className = 'small color-fg-muted mt-1';
-  const age = Date.now() - followersAt;
-  const stale = !followersAt || age > FOLLOWERS_TTL;
-  refreshDesc.textContent = stale ? t('followersStale') : t('followersAge')(Math.max(1, Math.ceil(age / 3600000)));
-  refreshDesc.style.marginLeft = '21px';
-  const refreshBtn = document.createElement('button');
-  refreshBtn.type = 'button';
-  refreshBtn.className = 'Button Button--invisible Button--small rgf-refresh-btn';
-  refreshBtn.textContent = t('refreshList');
-  refreshBtn.addEventListener('click', async () => {
-    refreshBtn.disabled = true;
-    refreshBtn.textContent = t('fetching');
-    try {
-      await fetchFollowers();
-      loadAndApply();
-    } catch (e) {
-      refreshBtn.textContent = t('fetchFailed');
-    }
-    setTimeout(() => { refreshBtn.disabled = false; refreshBtn.textContent = t('refreshList'); }, 3000);
-  });
-  refreshRow.append(refreshDesc, refreshBtn);
-  scopeList.appendChild(refreshRow);
   section.appendChild(scopeList);
 
   // ---- 卡片类型分组（每组复刻原生"标题组 + list"结构）----
   const groups = [
-    [t('groupSocial'), [
-      ['STARRED_REPOSITORY', 'typeStar', 'Stars'],
-      ['FORKED_REPOSITORY', 'typeFork', 'Repositories'],
-      ['FOLLOW', 'typeFollow', 'Follows'],
-      ['CREATED_REPOSITORY', 'typeCreateRepo', 'Repositories'],
+    ['社交动态', [
+      ['STARRED_REPOSITORY', 'Star（仓库被 star）', 'Stars'],
+      ['FORKED_REPOSITORY', 'Fork（仓库被 fork）', 'Repositories'],
+      ['FOLLOW', '关注（FOLLOW）', 'Follows'],
+      ['CREATED_REPOSITORY', '创建仓库', 'Repositories'],
     ]],
-    [t('groupRepoActivity'), [
-      ['MERGED_PULL_REQUEST', 'typePrMerged', 'RepositoryActivity'],
-      ['RELEASE', 'typeRelease', 'Releases'],
-      ['PRIVATE_TO_PUBLIC_REPOSITORY', 'typeVisibility', 'Repositories'],
+    ['仓库活动', [
+      ['MERGED_PULL_REQUEST', 'PR 合并', 'RepositoryActivity'],
+      ['RELEASE', 'Release 发布', 'Releases'],
+      ['PRIVATE_TO_PUBLIC_REPOSITORY', '私有转公开', 'Repositories'],
     ]],
-    [t('groupDiscover'), [
-      ['ADDED_TO_LIST', 'typeAddedToList', 'Recommendations'],
-      ['REPOSITORY_RECOMMENDATION', 'typeRecommendation', 'Recommendations'],
-      ['TRENDING_REPOSITORY', 'typeTrending', 'Recommendations'],
+    ['发现内容', [
+      ['ADDED_TO_LIST', '加入 Star List', 'Recommendations'],
+      ['REPOSITORY_RECOMMENDATION', '算法推荐', 'Recommendations'],
+      ['TRENDING_REPOSITORY', '趋势榜', 'Recommendations'],
     ]],
   ];
   for (const [groupLabel, defs] of groups) {
@@ -287,7 +254,7 @@ async function buildSubFilters(block) {
       '#feed-filter-menu input[data-targets="feed-filter.inputs"][name]')) {
       nativeInputs[inp.name] = inp;
     }
-    for (const [type, labelKey, nativeGroup] of defs) {
+    for (const [type, label, nativeGroup] of defs) {
       const chk = document.createElement('input');
       chk.type = 'checkbox';
       // 初始态跟随原生分组勾选（同组子类型共享父开关状态）
@@ -308,38 +275,14 @@ async function buildSubFilters(block) {
         name: nativeGroup,
         iconKey: meta.icon || 'person',
         checked: chk.checked,
-        label: t(labelKey),
-        desc: t(meta.descKey || 'descRepositories'),
+        label,
+        desc: meta.desc || '人们创建或 fork 的仓库',
         input: chk,
       }));
     }
     section.appendChild(list);
   }
   block.appendChild(section);
-}
-
-// 抓取关注者名单：解析 github.com/<user>?tab=followers 分页页面
-async function fetchFollowers() {
-  const me = currentUser();
-  if (!me) throw new Error('未登录');
-  const names = [];
-  for (let page = 1; page <= 10; page++) {
-    const res = await fetch(`https://github.com/${me}?tab=followers&page=${page}`, {
-      credentials: 'same-origin',
-    });
-    if (!res.ok) break;
-    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
-    const found = [...doc.querySelectorAll('[data-hovercard-type="user"], a.d-inline-block')
-    ].map((a) => a.getAttribute('href')).filter((h) => h && /^\/[A-Za-z0-9-]+$/.test(h))
-      .map((h) => h.slice(1));
-    names.push(...found);
-    // 无"下一页"则停止
-    if (!doc.querySelector('.pagination a[rel="next"], a.next_page')) break;
-    if (found.length === 0) break;
-  }
-  const unique = [...new Set(names)];
-  await chrome.storage.sync.set({ [FOLLOWERS_KEY]: unique, [FOLLOWERS_AT_KEY]: Date.now() });
-  return unique.length;
 }
 
 function buildSeparator() {

@@ -25,7 +25,6 @@
       ],
       "js": [
         "src/shared.js",
-        "src/i18n.js",
         "src/content.js",
         "src/panel.js"
       ],
