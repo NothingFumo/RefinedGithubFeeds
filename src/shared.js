@@ -47,7 +47,7 @@ function extractItem(el) {
     return node ? node.textContent.trim() : null;
   };
   const repoLink = q('a[data-hovercard-type="repository"]');
-  const actorEl = q('a[data-hovercard-type="user"]');
+  const actorEl = q('a[data-hovercard-type="user"]') || q('a[data-hovercard-type="organization"]');
   const eventBadge = q('[data-test-selector="feed-item-event-type"], [data-ga-click*="feed-item"]');
   // 卡片类型：主锚点 = data-hydro-view 的 feed_card.card_type（如 STARRED_REPOSITORY）
   let cardType = null;
@@ -85,6 +85,7 @@ function extractItem(el) {
             actorEl.textContent.replace(/^@\s*/, '').trim() || null;
   }
   return {
+    actorEl,
     actor,
     repo: repoLink ? repoLink.textContent.replace(/\s+/g, '').trim() || null : null,
     event: eventBadge ? eventBadge.getAttribute('data-feed-item-type') || null : null,
@@ -104,6 +105,8 @@ const CARD_TYPE_TO_NATIVE = {
   REPOSITORY_RECOMMENDATION: 'Recommendations',
   TRENDING_REPOSITORY: 'Recommendations',
   PRIVATE_TO_PUBLIC_REPOSITORY: 'Repositories',
+  FOLLOW: 'Follows',
+  CREATED_REPOSITORY: 'Repositories',
 };
 
 // 当前登录用户名（GitHub 在页面 meta 中注入，任意语言界面可用）
