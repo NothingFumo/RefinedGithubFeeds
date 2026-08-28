@@ -66,8 +66,8 @@ const NATIVE_TYPE_MAP = {
 };
 
 
-// 发起者范围开关：rgf.scope = { onlyFollowers: bool, onlyMyRepos: bool }
-let scopeFilter = { onlyFollowers: false, onlyMyRepos: false };
+// 角色范围：rgf.scope = { roleMode: 'all'|'self'|'followers'|'orgs'|'users', onlyMyRepos: bool }
+let scopeFilter = { roleMode: 'all', onlyMyRepos: false };
 // 关注者名单缓存（panel.js 抓取写入 rgf.followers + rgf.followersAt）
 let followersSet = null;
 
@@ -90,14 +90,22 @@ function isExcluded(item, unchecked) {
       if (types.split(',').includes(item.cardType)) return true;
     }
   }
-  // 发起者范围：仅当条目有 actor 时可判定；无 actor 的推荐/趋势不受影响
-  if ((scopeFilter.onlyFollowers || scopeFilter.onlyMyRepos) && item.actor) {
-    if (scopeFilter.onlyFollowers &&
-        followersSet && !followersSet.has(item.actor.toLowerCase())) return true;
-    if (scopeFilter.onlyMyRepos && item.repo) {
-      const me = currentUser();
-      if (me && !item.repo.toLowerCase().startsWith(me.toLowerCase() + '/')) return true;
-    }
+  // 角色范围：仅当条目有 actor 时可判定；无 actor 的推荐/趋势不受影响
+  const roleMode = scopeFilter.roleMode || 'all';
+  if (roleMode !== 'all' && item.actor) {
+    const me = currentUser();
+    const actorLower = item.actor.toLowerCase();
+    const isSelf = !!me && actorLower === me.toLowerCase();
+    const isOrg = !!item.actorEl && item.actorEl.getAttribute('data-hovercard-type') === 'organization';
+    if (roleMode === 'self' && !isSelf) return true;
+    if (roleMode === 'followers' && !isSelf &&
+        followersSet && !followersSet.has(actorLower)) return true;
+    if (roleMode === 'orgs' && !isOrg) return true;
+    if (roleMode === 'users' && (isSelf || isOrg)) return true;
+  }
+  if (scopeFilter.onlyMyRepos && item.repo) {
+    const me = currentUser();
+    if (me && !item.repo.toLowerCase().startsWith(me.toLowerCase() + '/')) return true;
   }
   return false;
 }
@@ -199,7 +207,7 @@ async function loadAndApply() {
     STORAGE_ENABLED_KEY, 'rgf.scope', 'rgf.followers',
   ]);
   enabled = stored[STORAGE_ENABLED_KEY] !== false;
-  scopeFilter = Object.assign({ onlyFollowers: false, onlyMyRepos: false }, stored['rgf.scope']);
+  scopeFilter = Object.assign({ roleMode: 'all', onlyMyRepos: false }, stored['rgf.scope']);
   followersSet = new Set((stored['rgf.followers'] || []).map((u) => u.toLowerCase()));
   loaded = true;
   applyFilter();
