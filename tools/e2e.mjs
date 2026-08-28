@@ -296,33 +296,47 @@ async function main() {
   })()`);
   check('宿主外孤儿区块被自动清扫', true, true);
 
-  // ---- 场景 8e：细粒度开关驱动原生复选框（原生增强）----
-  // ---- 场景 8d：快捷按钮「隐藏此类动态」联动原生面板复选框 ----
+  // ---- 场景 8d：快捷按钮「隐藏此类动态」-> 细粒度持久化（与面板开关一一对应）----
+  await new Promise((r) => setTimeout(r, 800));
   await evaljs(ws, `(() => {
-    // 点击 spammer 条目（FORKED）的快捷按钮
     const btn = document.querySelector('#item-spammer .rgf-quick-btn button');
+    if (!btn) return 'btn-missing';
     btn.click();
-    // 联动断言：原生 Repositories 复选框应被取消勾选
-    const native = document.querySelector('#feed-filter-menu input[name="Repositories"]');
-    return JSON.stringify({ nativeChecked: native ? native.checked : null });
+    return 'clicked';
   })()`);
+  await new Promise((r) => setTimeout(r, 500));
   const qbtn = JSON.parse(await evaljs(ws, `JSON.stringify((() => {
     const native = document.querySelector('#feed-filter-menu input[name="Repositories"]');
+    const switchChk = document.querySelector('.rgf-subfilters input[data-card-type="FORKED_REPOSITORY"]');
     return {
       nativeExists: !!native,
       nativeChecked: native ? native.checked : null,
+      switchChecked: switchChk ? switchChk.checked : null,
       spammerHidden: document.querySelector('#item-spammer').style.display === 'none',
     };
   })())`));
   check('原生 Repositories 分组存在', qbtn.nativeExists, true);
-  check('快捷按钮取消勾选原生分组', qbtn.nativeChecked, false);
+  check('快捷按钮不改写原生复选框', qbtn.nativeChecked, true);
+  check('面板对应细粒度开关同步取消', qbtn.switchChecked, false);
   check('快捷按钮后条目即时隐藏', qbtn.spammerHidden, true);
-  // 恢复：重新勾选原生分组
+
+  // 临时撤销（角标）：条目仍在 DOM（未触发服务端过滤），必须可恢复显示
   await evaljs(ws, `(() => {
-    const inp = document.querySelector('#feed-filter-menu input[name="Repositories"]');
-    if (inp) { inp.checked = true; applyFilter(); }
-    return 'restored';
+    const badge = document.querySelector('#rgf-badge');
+    badge.click();
+    return 'suspended';
   })()`);
+  const rev = JSON.parse(await evaljs(ws, `JSON.stringify({
+    spammerShown: document.querySelector('#item-spammer').style.display !== 'none',
+  })`));
+  check('临时撤销后条目恢复显示', rev.spammerShown, true);
+  // 恢复过滤（再次点击角标），并清除快捷按钮产生的 cardTypes 状态
+  await evaljs(ws, `(() => {
+    document.querySelector('#rgf-badge').click();
+    return 'resumed';
+  })()`);
+  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.cardTypes': {} }); 'cleared'`);
+  await new Promise((r) => setTimeout(r, 500));
 
   // 细粒度开关：扩展自有持久化 + 前端过滤，不触碰原生复选框（避免同组状态矛盾）
   await evaljs(ws, `(() => {
@@ -363,7 +377,7 @@ async function main() {
   const s13 = JSON.parse(await evaljs(ws, `JSON.stringify((() => ({
     hidden: [...document.querySelectorAll('article.js-feed-item-component')].filter(e => e.style.display === 'none').map(e => e.id),
   }))())`));
-  check('全勾选后无隐藏条目', s13.hidden.length, 0);
+  check('全勾选后无隐藏条目', s13.hidden, []);
 
   let failed = 0;
   for (const c of CHECKS) {

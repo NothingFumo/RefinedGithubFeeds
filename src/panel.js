@@ -6,6 +6,7 @@ const BLOCK_CLASS = 'rgf-filter-block';
 
 // 模块级状态（由 buildSubFilters 填充；loaded 由 content.js 声明共享）
 let scopeState = null;      // { roleMode, onlyMyRepos }
+let cardTypesLive = null;   // rgf.cardTypes 最新值（开关 change 以它为基底，防并发覆盖）
 
 // ---- 草稿状态 ----
 // 真实结构（登录态抓取）：
@@ -153,7 +154,7 @@ const NATIVE_GROUP_META = {
 async function buildSubFilters(block) {
   const stored = await chrome.storage.sync.get([SCOPE_KEY, CARD_TYPES_KEY]);
   scopeState = Object.assign({ roleMode: 'all', onlyMyRepos: false }, stored[SCOPE_KEY]);
-  const cardTypesState = stored[CARD_TYPES_KEY] || {};
+  cardTypesLive = stored[CARD_TYPES_KEY] || {};
 
   // 复用原生 SelectMenu 标记：与 Events 分组完全同构（tmp-px-3 mt-2 标题组 + SelectMenu-list）
   const section = document.createElement('div');
@@ -260,12 +261,12 @@ async function buildSubFilters(block) {
       const chk = document.createElement('input');
       chk.type = 'checkbox';
       // 初始态 = 扩展自有偏好（缺省全部勾选；不读写原生分组，避免同组状态矛盾）
-      chk.checked = cardTypesState[type] !== false;
+      chk.checked = cardTypesLive[type] !== false;
       chk.dataset.cardType = type;
       chk.dataset.nativeGroup = nativeGroup;
       chk.addEventListener('change', async () => {
-        const next = Object.assign({}, cardTypesState);
-        next[type] = chk.checked;
+        const next = Object.assign({}, cardTypesLive || {}, { [type]: chk.checked });
+        cardTypesLive = next;
         await chrome.storage.sync.set({ [CARD_TYPES_KEY]: next });
         applyFilter();
       });
@@ -294,3 +295,13 @@ function buildSeparator() {
 const panelObserver = new MutationObserver(() => injectPanelBlock());
 panelObserver.observe(document.documentElement, { childList: true, subtree: true });
 injectPanelBlock();
+
+// 快捷按钮等外部路径写入 rgf.cardTypes 时，重建面板开关状态保持一一对应
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !changes[CARD_TYPES_KEY]) return;
+  const block = document.querySelector('#feed-filter-menu .' + BLOCK_CLASS);
+  if (!block) return;
+  const sub = block.querySelector('.rgf-subfilters');
+  if (sub) sub.remove();
+  buildSubFilters(block);
+});
