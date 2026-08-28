@@ -189,6 +189,7 @@ async function main() {
       instantSave: block.dataset.instantSave || '',
       subFilters: !!block.querySelector('.rgf-subfilters'),
       subChecks: block.querySelectorAll('.rgf-subfilters input[data-card-type]').length,
+      roleRadios: block.querySelectorAll('input[data-role-mode]').length,
       scopeToggles: block.querySelectorAll('input[data-scope]').length,
       groups: [...block.querySelectorAll('.rgf-subfilters h5')].map(g => g.textContent).filter(t => ['社交动态','仓库活动','发现内容'].includes(t)),
       // 几何对齐度量：区块与原生分组的左右内边距起点应一致
@@ -203,7 +204,8 @@ async function main() {
   check('区块无水平溢出', s7.noHorizontalOverflow, true);
   check('更细过滤分组已注入', s7.subFilters, true);
   check('八种卡片类型开关齐全', s7.subChecks, 8);
-  check('两个发起者范围开关齐全', s7.scopeToggles, 2);
+  check('五个角色单选开关齐全（含全部角色）', s7.roleRadios, 5);
+  check('只看我仓库独立开关存在', s7.scopeToggles, 1);
   check('类型开关按语义分三组', s7.groups, ['社交动态', '仓库活动', '发现内容']);
 
 
