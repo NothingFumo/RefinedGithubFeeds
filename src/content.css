@@ -21,8 +21,3 @@
   opacity: 0.6;
   cursor: default;
 }
-
-/* 被隐藏条目的标记（display:none 由内联样式控制） */
-.rgf-hidden {
-  /* 仅作语义标记 */
-}

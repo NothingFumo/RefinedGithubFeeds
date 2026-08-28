@@ -4,15 +4,11 @@
 // 文案表：zh 为简体中文，en 为英文兜底
 const I18N = {
   zh: {
-    scopeTitle: '发起者范围',
     onlyMyRepos: '只看我仓库的动态',
-    onlyMyReposHint: '条目仓库属于当前账号',
     onlyFollowers: '只看关注者的动态',
-    onlyFollowersHint: '发起者在你的关注者名单中',
     followersCount: (n) => `只看关注者的动态（${n} 人）`,
     followersStale: '关注者名单未缓存或已过期',
     followersAge: (h) => `关注者名单 ${h} 小时前更新`,
-    followersFresh: '关注者名单刚刚更新',
     refreshList: '刷新名单',
     fetching: '抓取中…',
     fetchFailed: '抓取失败',
@@ -52,15 +48,11 @@ const I18N = {
     hideThisType: '隐藏此类动态',
   },
   en: {
-    scopeTitle: 'Actor scope',
     onlyMyRepos: 'Only activity on my repositories',
-    onlyMyReposHint: 'Repository belongs to the current account',
     onlyFollowers: 'Only activity from people I follow',
-    onlyFollowersHint: 'Actor is in your follower list',
     followersCount: (n) => `Only from people I follow (${n})`,
     followersStale: 'Follower list not cached or expired',
     followersAge: (h) => `Follower list updated ${h}h ago`,
-    followersFresh: 'Follower list just updated',
     refreshList: 'Refresh list',
     fetching: 'Fetching…',
     fetchFailed: 'Fetch failed',

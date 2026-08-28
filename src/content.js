@@ -54,18 +54,6 @@ function updateBadge(hiddenCount) {
 
 // ---- 过滤主流程 ----
 
-// 原生筛选面板勾选状态 -> 卡片类型过滤。未勾选的类型一律隐藏。
-// data-name 与 feed_card.card_type 的映射（用户页面 2.5MB 实抓校准）：
-const NATIVE_TYPE_MAP = {
-  Releases: 'RELEASE',
-  Sponsors: null,            // 无独立 card_type，无法精确判定则不过滤
-  Stars: 'STARRED_REPOSITORY',
-  Repositories: 'FORKED_REPOSITORY,PRIVATE_TO_PUBLIC_REPOSITORY',
-  RepositoryActivity: 'MERGED_PULL_REQUEST,PULL_REQUEST',
-  Recommendations: 'REPOSITORY_RECOMMENDATION,TRENDING_REPOSITORY,ADDED_TO_LIST',
-};
-
-
 // 角色范围：rgf.scope = { roleMode: 'all'|'self'|'followers'|'orgs'|'users', onlyMyRepos: bool }
 let scopeFilter = { roleMode: 'all', onlyMyRepos: false };
 // 关注者名单缓存（panel.js 抓取写入 rgf.followers + rgf.followersAt）
@@ -81,7 +69,7 @@ function readNativeSelection() {
   return { checked, unchecked };
 }
 
-// 条目是否被排除：原生未勾选分组 / 发起者范围（无全局白名单层）
+// 条目是否被排除：原生未勾选分组 / 角色范围（无自定义规则层）
 function isExcluded(item, unchecked) {
   if (unchecked.size > 0 && item.cardType) {
     for (const name of unchecked) {
@@ -118,8 +106,7 @@ async function applyFilter() {
   const { unchecked } = readNativeSelection();
   const parsed = items.map((el) => ({ el, item: extractItem(el) }));
 
-  // 裁决 = 原生勾选联动 + 细粒度类型白名单 + 发起者范围
-  //（三者不受 suspended 影响：它们是用户明确的类型偏好）
+  // 裁决 = 原生勾选联动 + 角色范围（不受 suspended 影响：用户明确的类型偏好）
   // wouldHide 始终按"未撤销"计算（供角标展示恢复后将被滤掉的数量）
   const results = parsed.map(({ el, item }) => {
     const excluded = isExcluded(item, unchecked);
@@ -170,7 +157,7 @@ function attachQuickButtons(el) {
   const wrap = document.createElement('div');
   wrap.className = BTN_CLASS;
   const item = extractItem(el);
-  // 快捷操作：隐藏该卡片类型（从白名单移除），与面板更细过滤联动
+  // 快捷操作：隐藏该卡片类型（取消对应原生分组勾选），与面板开关联动
   if (item.cardType && CARD_TYPE_TO_NATIVE[item.cardType]) {
     const nativeGroup = CARD_TYPE_TO_NATIVE[item.cardType];
     wrap.appendChild(makeQuickBtn(t('hideThisType'), () => {

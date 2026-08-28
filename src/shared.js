@@ -4,42 +4,6 @@
 // 总开关键
 const STORAGE_ENABLED_KEY = 'rgf.enabled';
 
-// 事件类型内置映射：标识 -> 中文标签。页面动态收集到的未知类型按原始标识展示。
-const EVENT_LABELS = {
-  ForkEvent: 'Fork',
-  WatchEvent: 'Star',
-  PushEvent: 'Push',
-  CreateEvent: '创建仓库/分支',
-  ReleaseEvent: 'Release',
-  IssuesEvent: 'Issue',
-  PullRequestEvent: 'PR',
-  IssueCommentEvent: 'Issue 评论',
-  PullRequestReviewEvent: 'PR 审查',
-  PublicEvent: '转为公开',
-  MemberEvent: '协作者变动',
-  GollumEvent: 'Wiki',
-  DeleteEvent: '删除分支/标签',
-};
-
-// glob 转正则：`*` 匹配任意字符段，其余元字符转义；大小写不敏感。
-function globToRegExp(pattern) {
-  const escaped = pattern
-    .trim()
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}$`, 'i');
-}
-
-// 深拷贝（结构化克隆不可用于普通对象数组时的朴素实现）
-function deepClone(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-// 通配符匹配（glob 语义，大小写不敏感；见 docs/adr/0002）
-function matchPattern(value, pattern) {
-  if (!value) return false;
-  return globToRegExp(pattern).test(String(value));
-}
 function extractItem(el) {
   const q = (sel) => el.querySelector(sel);
   const text = (sel) => {
@@ -106,6 +70,18 @@ const OCTICON_PATHS = {
   star: 'M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Zm0 2.445L6.615 5.5a.75.75 0 0 1-.564.41l-3.097.45 2.24 2.184a.75.75 0 0 1 .216.664l-.528 3.084 2.769-1.456a.75.75 0 0 1 .698 0l2.77 1.456-.53-3.084a.75.75 0 0 1 .216-.664l2.24-2.183-3.096-.45a.75.75 0 0 1-.564-.41L8 2.694Z',
   tag: 'M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 0 1 0 2.474l-5.026 5.026a1.75 1.75 0 0 1-2.474 0l-6.25-6.25A1.752 1.752 0 0 1 1 7.775Zm1.5 0c0 .066.026.13.073.177l6.25 6.25a.25.25 0 0 0 .354 0l5.025-5.025a.25.25 0 0 0 0-.354l-6.25-6.25a.25.25 0 0 0-.177-.073H2.75a.25.25 0 0 0-.25.25ZM6 5a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z',
   organization: 'M1.75 16A1.75 1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0h8.5C11.216 0 12 .784 12 1.75v12.5c0 .085-.006.168-.018.25h2.268a.25.25 0 0 0 .25-.25V8.285a.25.25 0 0 0-.111-.208l-1.055-.703a.749.749 0 1 1 .832-1.248l1.055.703c.487.325.779.871.779 1.456v5.965A1.75 1.75 0 0 1 14.25 16h-3.5a.766.766 0 0 1-.197-.026c-.099.017-.2.026-.303.026h-3a.75.75 0 0 1-.75-.75V14h-1v1.25a.75.75 0 0 1-.75.75Zm-.25-1.75c0 .138.112.25.25.25H4v-1.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75v1.25h2.25a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25h-8.5a.25.25 0 0 0-.25.25ZM3.75 6h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5ZM3 3.75A.75.75 0 0 1 3.75 3h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 3 3.75Zm4 3A.75.75 0 0 1 7.75 6h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 7 6.75ZM7.75 3h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5ZM3 9.75A.75.75 0 0 1 3.75 9h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 3 9.75ZM7.75 9h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5Z',
+};
+
+// 原生筛选面板分组 -> card_type 集合（isExcluded 用；与 CARD_TYPE_TO_NATIVE 互为反向）
+// 未列出的分组（Announcements/Sponsors/StarredRelationships）无精确 card_type，不过滤
+const NATIVE_TYPE_MAP = {
+  Releases: 'RELEASE',
+  Sponsors: null,
+  Stars: 'STARRED_REPOSITORY',
+  Repositories: 'FORKED_REPOSITORY,PRIVATE_TO_PUBLIC_REPOSITORY,CREATED_REPOSITORY',
+  RepositoryActivity: 'MERGED_PULL_REQUEST,PULL_REQUEST',
+  Recommendations: 'REPOSITORY_RECOMMENDATION,TRENDING_REPOSITORY,ADDED_TO_LIST',
+  Follows: 'FOLLOW',
 };
 
 const CARD_TYPE_TO_NATIVE = {

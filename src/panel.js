@@ -4,6 +4,10 @@
 const PANEL_MENU_ID = 'feed-filter-menu';
 const BLOCK_CLASS = 'rgf-filter-block';
 
+// 模块级状态（由 buildSubFilters 填充；loaded 由 content.js 声明共享）
+let scopeState = null;      // { roleMode, onlyMyRepos }
+let followersCache = [];
+
 // ---- 草稿状态 ----
 // 真实结构（登录态抓取）：
 //   <details-menu class="SelectMenu-modal ... feed-filter-menu-body position-absolute">
@@ -96,28 +100,11 @@ function ensureLoaded() {
   return loadAndApply();
 }
 
-// ---- 细粒度卡片类型过滤：按 card_type 精确排除，独立于规则与原生勾选 ----
-// card_type -> 原生分组映射（content.js 快捷按钮与面板开关共用）
-const CARD_TYPE_DEFS = [
-  ['STARRED_REPOSITORY', 'typeStar', 'Stars'],
-  ['FORKED_REPOSITORY', 'typeFork', 'Repositories'],
-  ['MERGED_PULL_REQUEST', 'typePrMerged', 'RepositoryActivity'],
-  ['RELEASE', 'typeRelease', 'Releases'],
-  ['ADDED_TO_LIST', 'typeAddedToList', 'Recommendations'],
-  ['REPOSITORY_RECOMMENDATION', 'typeRecommendation', 'Recommendations'],
-  ['TRENDING_REPOSITORY', 'typeTrending', 'Recommendations'],
-  ['PRIVATE_TO_PUBLIC_REPOSITORY', 'typeVisibility', 'Repositories'],
-  ['FOLLOW', 'typeFollow', 'Follows'],
-  ['CREATED_REPOSITORY', 'typeCreateRepo', 'Repositories'],
-];
-
+// 存储键：角色范围 / 关注者名单（与 content.js 共享）
+const SCOPE_KEY = 'rgf.scope';
 const FOLLOWERS_KEY = 'rgf.followers';
 const FOLLOWERS_AT_KEY = 'rgf.followersAt';
-const SCOPE_KEY = 'rgf.scope';
-const FOLLOWERS_TTL = 24 * 60 * 60 * 1000; // 24h
-
-let scopeState = null;      // { onlyFollowers, onlyMyRepos } 草稿
-let followersCache = [];    // 当前已缓存名单（用于显示数量）
+const FOLLOWERS_TTL = 24 * 60 * 60 * 1000;
 
 // 完全仿原生面板行：结构与原生 SelectMenu-item 逐字节同构
 // （图标 + 标题 + 描述；不挂 data-action 以免被原生 Catalyst 控制器接管）
@@ -269,6 +256,8 @@ async function buildSubFilters(block) {
     [t('groupSocial'), [
       ['STARRED_REPOSITORY', 'typeStar', 'Stars'],
       ['FORKED_REPOSITORY', 'typeFork', 'Repositories'],
+      ['FOLLOW', 'typeFollow', 'Follows'],
+      ['CREATED_REPOSITORY', 'typeCreateRepo', 'Repositories'],
     ]],
     [t('groupRepoActivity'), [
       ['MERGED_PULL_REQUEST', 'typePrMerged', 'RepositoryActivity'],

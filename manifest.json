@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RefinedGithubFeeds",
-  "description": "按发起者、仓库、事件类型、关键词过滤 GitHub 首页动态流",
+  "description": "按事件类型与发起者角色过滤 GitHub 首页动态流，增强原生 Filter 面板",
   "version": "0.1.0",
   "icons": {
     "16": "icons/icon16.png",
@@ -9,24 +9,31 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage"],
-  "background": {
-    "service_worker": "src/background.js"
-  },
+  "permissions": [
+    "storage"
+  ],
   "action": {
     "default_popup": "src/popup.html",
     "default_title": "RefinedGithubFeeds 过滤设置"
   },
   "content_scripts": [
     {
-      "matches": ["https://github.com/", "https://github.com/dashboard", "https://github.com/dashboard*"],
-      "js": ["src/shared.js", "src/i18n.js", "src/content.js", "src/panel.js"],
-      "css": ["src/content.css", "src/panel.css"],
+      "matches": [
+        "https://github.com/",
+        "https://github.com/dashboard",
+        "https://github.com/dashboard*"
+      ],
+      "js": [
+        "src/shared.js",
+        "src/i18n.js",
+        "src/content.js",
+        "src/panel.js"
+      ],
+      "css": [
+        "src/content.css",
+        "src/panel.css"
+      ],
       "run_at": "document_idle"
     }
-  ],
-  "options_ui": {
-    "page": "src/options.html",
-    "open_in_tab": true
-  }
+  ]
 }
