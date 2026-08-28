@@ -107,6 +107,8 @@ const CARD_TYPE_DEFS = [
   ['REPOSITORY_RECOMMENDATION', 'typeRecommendation', 'Recommendations'],
   ['TRENDING_REPOSITORY', 'typeTrending', 'Recommendations'],
   ['PRIVATE_TO_PUBLIC_REPOSITORY', 'typeVisibility', 'Repositories'],
+  ['FOLLOW', 'typeFollow', 'Follows'],
+  ['CREATED_REPOSITORY', 'typeCreateRepo', 'Repositories'],
 ];
 
 const FOLLOWERS_KEY = 'rgf.followers';
@@ -127,33 +129,39 @@ async function buildSubFilters(block) {
   const section = document.createElement('div');
   section.className = 'rgf-subfilters';
 
-  // ---- 发起者范围 ----
+  // ---- 角色范围（单选：all/self/followers/orgs/users）----
   const scopeHead = document.createElement('div');
   scopeHead.className = 'tmp-px-3 mt-2';
   const scopeH5 = document.createElement('h5');
   scopeH5.className = 'd-flex flex-items-center';
-  scopeH5.textContent = t('scopeTitle');
+  scopeH5.textContent = t('roleTitle');
   scopeHead.appendChild(scopeH5);
   section.appendChild(scopeHead);
 
   const scopeList = document.createElement('div');
   scopeList.className = 'SelectMenu-list SelectMenu-list--borderless';
   scopeList.setAttribute('role', 'menu');
-  for (const [key, label, hint] of [
-    ['onlyMyRepos', t('onlyMyRepos'), t('onlyMyReposHint')],
-    ['onlyFollowers', t('followersCount')(followersCache.length), t('onlyFollowersHint')],
-  ]) {
+  const roleOptions = [
+    ['all', t('scopeAll')],
+    ['self', t('roleSelf')],
+    ['followers', t('roleFollowers')],
+    ['orgs', t('roleOrgs')],
+    ['users', t('roleUsers')],
+  ];
+  const roleMode = scopeState.roleMode || 'all';
+  for (const [mode, label] of roleOptions) {
     const rowEl = document.createElement('label');
     rowEl.className = 'd-flex pl-0 my-2 tmp-px-3 flex-column flex-items-start text-normal SelectMenu-item js-navigation-item';
     const headWrap = document.createElement('div');
     headWrap.className = 'd-flex flex-items-center';
     const chk = document.createElement('input');
-    chk.type = 'checkbox';
-    chk.checked = !!scopeState[key];
-    chk.dataset.scope = key;
-    chk.title = hint;
+    chk.type = 'radio';
+    chk.name = 'rgf-role-mode';
+    chk.checked = roleMode === mode;
+    chk.dataset.roleMode = mode;
     chk.addEventListener('change', async () => {
-      scopeState[key] = chk.checked;
+      if (!chk.checked) return;
+      scopeState.roleMode = mode;
       await chrome.storage.sync.set({ [SCOPE_KEY]: scopeState });
       applyFilter();
     });
@@ -164,6 +172,27 @@ async function buildSubFilters(block) {
     rowEl.appendChild(headWrap);
     scopeList.appendChild(rowEl);
   }
+  // 只看我仓库的独立开关
+  const myRepoRow = document.createElement('label');
+  myRepoRow.className = 'd-flex pl-0 my-2 tmp-px-3 flex-column flex-items-start text-normal SelectMenu-item js-navigation-item';
+  const myRepoWrap = document.createElement('div');
+  myRepoWrap.className = 'd-flex flex-items-center';
+  const myRepoChk = document.createElement('input');
+  myRepoChk.type = 'checkbox';
+  myRepoChk.checked = !!scopeState.onlyMyRepos;
+  myRepoChk.dataset.scope = 'onlyMyRepos';
+  myRepoChk.addEventListener('change', async () => {
+    scopeState.onlyMyRepos = myRepoChk.checked;
+    await chrome.storage.sync.set({ [SCOPE_KEY]: scopeState });
+    applyFilter();
+  });
+  const myRepoLbl = document.createElement('h5');
+  myRepoLbl.className = 'd-flex flex-items-center ml-2 mb-0';
+  myRepoLbl.textContent = t('onlyMyRepos');
+  myRepoWrap.append(myRepoChk, myRepoLbl);
+  myRepoRow.appendChild(myRepoWrap);
+  scopeList.appendChild(myRepoRow);
+
   // 关注者名单刷新行：原生条目描述样式
   const refreshRow = document.createElement('div');
   refreshRow.className = 'd-flex flex-column tmp-px-3 pb-2';
