@@ -119,9 +119,56 @@ const FOLLOWERS_TTL = 24 * 60 * 60 * 1000; // 24h
 let scopeState = null;      // { onlyFollowers, onlyMyRepos } 草稿
 let followersCache = [];    // 当前已缓存名单（用于显示数量）
 
+// 完全仿原生面板行：结构与原生 SelectMenu-item 逐字节同构
+// （图标 + 标题 + 描述；不挂 data-action 以免被原生 Catalyst 控制器接管）
+function makeNativeRow({ name, iconKey, checked, label, desc, input }) {
+  const rowEl = document.createElement('label');
+  rowEl.className = 'd-flex pl-0 my-2 tmp-px-3 flex-column flex-items-start text-normal SelectMenu-item js-navigation-item';
+  rowEl.dataset.selected = checked ? 'true' : 'false';
+  rowEl.dataset.name = name;
+  const head = document.createElement('div');
+  head.className = 'd-flex flex-items-center';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('data-component', 'Octicon');
+  svg.setAttribute('height', '16');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('width', '16');
+  svg.setAttribute('data-view-component', 'true');
+  svg.setAttribute('class', 'octicon octicon-' + iconKey + ' feed-filter-item-icon color-fg-muted mx-2 tmp-mx-2');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', OCTICON_PATHS[iconKey] || OCTICON_PATHS.person);
+  svg.appendChild(path);
+  const h5 = document.createElement('h5');
+  h5.className = 'd-flex flex-items-center';
+  h5.textContent = label;
+  head.append(input, svg, h5);
+  const descWrap = document.createElement('div');
+  descWrap.className = 'd-flex flex-column';
+  const span = document.createElement('span');
+  span.className = 'small color-fg-muted mt-1';
+  span.style.marginLeft = '21px';
+  span.textContent = desc;
+  descWrap.appendChild(span);
+  rowEl.append(head, descWrap);
+  return rowEl;
+}
+
+// 原生分组元数据：图标 + 描述文案（与原生面板一致）
+const NATIVE_GROUP_META = {
+  Announcements: { icon: 'megaphone', descKey: 'descAnnouncements' },
+  Releases: { icon: 'tag', descKey: 'descReleases' },
+  Sponsors: { icon: 'heart', descKey: 'descSponsors' },
+  Stars: { icon: 'star', descKey: 'descStars' },
+  Repositories: { icon: 'repo', descKey: 'descRepositories' },
+  RepositoryActivity: { icon: 'repo', descKey: 'descRepoActivity' },
+  Follows: { icon: 'personAdd', descKey: 'descFollows' },
+  Recommendations: { icon: 'markGithub', descKey: 'descRecommendations' },
+};
+
 async function buildSubFilters(block) {
   const stored = await chrome.storage.sync.get([SCOPE_KEY, FOLLOWERS_KEY, FOLLOWERS_AT_KEY]);
-  scopeState = Object.assign({ onlyFollowers: false, onlyMyRepos: false }, stored[SCOPE_KEY]);
+  scopeState = Object.assign({ roleMode: 'all', onlyMyRepos: false }, stored[SCOPE_KEY]);
   followersCache = stored[FOLLOWERS_KEY] || [];
   const followersAt = stored[FOLLOWERS_AT_KEY] || 0;
 
@@ -142,18 +189,14 @@ async function buildSubFilters(block) {
   scopeList.className = 'SelectMenu-list SelectMenu-list--borderless';
   scopeList.setAttribute('role', 'menu');
   const roleOptions = [
-    ['all', t('scopeAll')],
-    ['self', t('roleSelf')],
-    ['followers', t('roleFollowers')],
-    ['orgs', t('roleOrgs')],
-    ['users', t('roleUsers')],
+    ['all', t('scopeAll'), 'person', t('descAllRoles')],
+    ['self', t('roleSelf'), 'person', t('descSelf')],
+    ['followers', t('roleFollowers'), 'personAdd', t('descFollowersRole')],
+    ['orgs', t('roleOrgs'), 'organization', t('descOrgs')],
+    ['users', t('roleUsers'), 'person', t('descUsers')],
   ];
   const roleMode = scopeState.roleMode || 'all';
-  for (const [mode, label] of roleOptions) {
-    const rowEl = document.createElement('label');
-    rowEl.className = 'd-flex pl-0 my-2 tmp-px-3 flex-column flex-items-start text-normal SelectMenu-item js-navigation-item';
-    const headWrap = document.createElement('div');
-    headWrap.className = 'd-flex flex-items-center';
+  for (const [mode, label, iconKey, desc] of roleOptions) {
     const chk = document.createElement('input');
     chk.type = 'radio';
     chk.name = 'rgf-role-mode';
@@ -165,18 +208,16 @@ async function buildSubFilters(block) {
       await chrome.storage.sync.set({ [SCOPE_KEY]: scopeState });
       applyFilter();
     });
-    const lbl = document.createElement('h5');
-    lbl.className = 'd-flex flex-items-center ml-2 mb-0';
-    lbl.textContent = label;
-    headWrap.append(chk, lbl);
-    rowEl.appendChild(headWrap);
-    scopeList.appendChild(rowEl);
+    scopeList.appendChild(makeNativeRow({
+      name: 'rgf-role-' + mode,
+      iconKey,
+      checked: chk.checked,
+      label,
+      desc,
+      input: chk,
+    }));
   }
   // 只看我仓库的独立开关
-  const myRepoRow = document.createElement('label');
-  myRepoRow.className = 'd-flex pl-0 my-2 tmp-px-3 flex-column flex-items-start text-normal SelectMenu-item js-navigation-item';
-  const myRepoWrap = document.createElement('div');
-  myRepoWrap.className = 'd-flex flex-items-center';
   const myRepoChk = document.createElement('input');
   myRepoChk.type = 'checkbox';
   myRepoChk.checked = !!scopeState.onlyMyRepos;
@@ -186,12 +227,14 @@ async function buildSubFilters(block) {
     await chrome.storage.sync.set({ [SCOPE_KEY]: scopeState });
     applyFilter();
   });
-  const myRepoLbl = document.createElement('h5');
-  myRepoLbl.className = 'd-flex flex-items-center ml-2 mb-0';
-  myRepoLbl.textContent = t('onlyMyRepos');
-  myRepoWrap.append(myRepoChk, myRepoLbl);
-  myRepoRow.appendChild(myRepoWrap);
-  scopeList.appendChild(myRepoRow);
+  scopeList.appendChild(makeNativeRow({
+    name: 'rgf-my-repos',
+    iconKey: 'repo',
+    checked: myRepoChk.checked,
+    label: t('onlyMyRepos'),
+    desc: t('descMyRepos'),
+    input: myRepoChk,
+  }));
 
   // 关注者名单刷新行：原生条目描述样式
   const refreshRow = document.createElement('div');
@@ -256,10 +299,6 @@ async function buildSubFilters(block) {
       nativeInputs[inp.name] = inp;
     }
     for (const [type, labelKey, nativeGroup] of defs) {
-      const rowEl = document.createElement('label');
-      rowEl.className = 'd-flex pl-0 my-2 tmp-px-3 flex-column flex-items-start text-normal SelectMenu-item js-navigation-item';
-      const headWrap = document.createElement('div');
-      headWrap.className = 'd-flex flex-items-center';
       const chk = document.createElement('input');
       chk.type = 'checkbox';
       // 初始态跟随原生分组勾选（同组子类型共享父开关状态）
@@ -275,12 +314,15 @@ async function buildSubFilters(block) {
         }
         applyFilter();
       });
-      const title = document.createElement('h5');
-      title.className = 'd-flex flex-items-center ml-2 mb-0';
-      title.textContent = t(labelKey);
-      headWrap.append(chk, title);
-      rowEl.appendChild(headWrap);
-      list.appendChild(rowEl);
+      const meta = NATIVE_GROUP_META[nativeGroup] || {};
+      list.appendChild(makeNativeRow({
+        name: nativeGroup,
+        iconKey: meta.icon || 'person',
+        checked: chk.checked,
+        label: t(labelKey),
+        desc: t(meta.descKey || 'descRepositories'),
+        input: chk,
+      }));
     }
     section.appendChild(list);
   }
