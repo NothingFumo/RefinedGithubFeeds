@@ -196,12 +196,18 @@ async function main() {
       blockLeft: Math.round(b.left),
       nativeLeft: n ? Math.round(n.left) : null,
       noHorizontalOverflow: b.right <= scrollArea.getBoundingClientRect().right + 1 && b.left >= scrollArea.getBoundingClientRect().left - 1,
+      nativeLikeRows: [...block.querySelectorAll('.rgf-subfilters label.SelectMenu-item')].every(r =>
+        !!r.querySelector('svg.feed-filter-item-icon') &&
+        !!r.querySelector('span.small.color-fg-muted') &&
+        r.dataset.selected === 'true' || r.dataset.selected === 'false'
+      ),
     };
   })())`));
   check('注入区块存在于面板内', s7.blockExists, true);
   check('区块落在可滚动内容区内', s7.hostIsScrollArea, true);
   check('区块与原生分组左缘对齐', s7.nativeLeft !== null && Math.abs(s7.blockLeft - s7.nativeLeft) <= 2, true);
   check('区块无水平溢出', s7.noHorizontalOverflow, true);
+  check('开关行完全仿原生结构（图标+描述+selected）', s7.nativeLikeRows, true);
   check('更细过滤分组已注入', s7.subFilters, true);
   check('八种卡片类型开关齐全', s7.subChecks, 8);
   check('五个角色单选开关齐全（含全部角色）', s7.roleRadios, 5);
