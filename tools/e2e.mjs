@@ -166,8 +166,30 @@ async function main() {
   }))())`));
   check('停用后角标提示且不再隐藏', [s6.off, s6.spammer], [true, '']);
 
+  check('停用后角标提示且不再隐藏', [s6.off, s6.spammer], [true, '']);
+
   // 恢复启用，避免影响后续场景
   await evaljs(ws, `chrome.storage.sync.set({ 'rgf.enabled': true }); 'set'`);
+  await new Promise((r) => setTimeout(r, 500));
+
+  // P0 回归：启用状态下先隐藏（角色过滤），关闭总开关必须恢复显示
+  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.scope': { roleMode: 'self' } }); 'set'`);
+  await new Promise((r) => setTimeout(r, 500));
+  const p0a = JSON.parse(await evaljs(ws, `JSON.stringify({
+    bobHidden: document.querySelector('#item-bob').style.display === 'none',
+  })`));
+  check('角色过滤生效中（bob 非自己被隐藏）', p0a.bobHidden, true);
+  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.enabled': false }); 'set'`);
+  await new Promise((r) => setTimeout(r, 500));
+  const p0b = JSON.parse(await evaljs(ws, `JSON.stringify({
+    bobShown: document.querySelector('#item-bob').style.display !== 'none',
+    aliceShown: document.querySelector('#item-alice').style.display !== 'none',
+  })`));
+  check('总开关关闭后全部条目恢复显示', p0b.bobShown && p0b.aliceShown, true);
+  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.enabled': true }); 'set'`);
+  await new Promise((r) => setTimeout(r, 400));
+  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.scope': { roleMode: 'all' } }); 'set'`);
+  await new Promise((r) => setTimeout(r, 400));
 
   // ---- 场景 7：原生 Filter 面板注入区块 ----
   await evaljs(ws, `(async () => {
@@ -302,23 +324,31 @@ async function main() {
     return 'restored';
   })()`);
 
+  // 细粒度开关：扩展自有持久化 + 前端过滤，不触碰原生复选框（避免同组状态矛盾）
   await evaljs(ws, `(() => {
-    const chk = document.querySelector('.rgf-subfilters input[data-card-type="RELEASE"]');
+    const chk = document.querySelector('.rgf-subfilters input[data-card-type="STARRED_REPOSITORY"]');
     if (!chk) throw new Error('subfilter missing');
     chk.checked = false;
     chk.dispatchEvent(new Event('change'));
-    // 驱动后原生 Releases 复选框应被取消勾选
-    const native = document.querySelector('#feed-filter-menu input[name="Releases"]');
-    return JSON.stringify({ nativeUnchecked: native ? !native.checked : null });
+    return 'toggled-off';
   })()`);
-  const drv = JSON.parse(await evaljs(ws, `JSON.stringify({done:true})`));
-  check('细粒度开关驱动原生复选框', true, true);
+  await new Promise((r) => setTimeout(r, 500));
+  const drv = JSON.parse(await evaljs(ws, `JSON.stringify((() => {
+    const native = document.querySelector('#feed-filter-menu input[name="Stars"]');
+    return {
+      nativeChecked: native ? native.checked : null,
+      starredHidden: document.querySelector('#item-alice').style.display === 'none',
+    };
+  })())`));
+  check('细粒度开关不改写原生复选框', drv.nativeChecked, true);
+  check('细粒度开关取消后对应类型条目隐藏', drv.starredHidden, true);
   // 恢复
   await evaljs(ws, `(() => {
-    const chk = document.querySelector('.rgf-subfilters input[data-card-type="RELEASE"]');
+    const chk = document.querySelector('.rgf-subfilters input[data-card-type="STARRED_REPOSITORY"]');
     if (chk) { chk.checked = true; chk.dispatchEvent(new Event('change')); }
     return 'restored';
   })()`);
+  await new Promise((r) => setTimeout(r, 500));
 
   // ---- 场景 9f：全部勾选 + Save 后所有条目显示（回归保护）----
   await evaljs(ws, `(async () => {

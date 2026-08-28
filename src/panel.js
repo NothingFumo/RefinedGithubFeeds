@@ -101,6 +101,7 @@ function ensureLoaded() {
 
 // 存储键：角色范围（与 content.js 共享）
 const SCOPE_KEY = 'rgf.scope';
+const CARD_TYPES_KEY = 'rgf.cardTypes';
 
 // 完全仿原生面板行：结构与原生 SelectMenu-item 逐字节同构
 // （图标 + 标题 + 描述；不挂 data-action 以免被原生 Catalyst 控制器接管）
@@ -150,8 +151,9 @@ const NATIVE_GROUP_META = {
 };
 
 async function buildSubFilters(block) {
-  const stored = await chrome.storage.sync.get([SCOPE_KEY]);
+  const stored = await chrome.storage.sync.get([SCOPE_KEY, CARD_TYPES_KEY]);
   scopeState = Object.assign({ roleMode: 'all', onlyMyRepos: false }, stored[SCOPE_KEY]);
+  const cardTypesState = stored[CARD_TYPES_KEY] || {};
 
   // 复用原生 SelectMenu 标记：与 Events 分组完全同构（tmp-px-3 mt-2 标题组 + SelectMenu-list）
   const section = document.createElement('div');
@@ -257,17 +259,14 @@ async function buildSubFilters(block) {
     for (const [type, label, nativeGroup] of defs) {
       const chk = document.createElement('input');
       chk.type = 'checkbox';
-      // 初始态跟随原生分组勾选（同组子类型共享父开关状态）
-      const nInput = nativeInputs[nativeGroup];
-      chk.checked = nInput ? nInput.checked : true;
+      // 初始态 = 扩展自有偏好（缺省全部勾选；不读写原生分组，避免同组状态矛盾）
+      chk.checked = cardTypesState[type] !== false;
       chk.dataset.cardType = type;
       chk.dataset.nativeGroup = nativeGroup;
-      chk.addEventListener('change', () => {
-        // 驱动原生复选框，保持服务端偏好一致
-        if (nativeInputs[nativeGroup] && nativeInputs[nativeGroup].checked !== chk.checked) {
-          nativeInputs[nativeGroup].checked = chk.checked;
-          nativeInputs[nativeGroup].dispatchEvent(new Event('click', { bubbles: true }));
-        }
+      chk.addEventListener('change', async () => {
+        const next = Object.assign({}, cardTypesState);
+        next[type] = chk.checked;
+        await chrome.storage.sync.set({ [CARD_TYPES_KEY]: next });
         applyFilter();
       });
       const meta = NATIVE_GROUP_META[nativeGroup] || {};

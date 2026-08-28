@@ -56,6 +56,8 @@ function updateBadge(hiddenCount) {
 
 // 角色范围：rgf.scope = { roleMode: 'all'|'self'|'orgs'|'users', onlyMyRepos: bool }
 let scopeFilter = { roleMode: 'all', onlyMyRepos: false };
+// 扩展自有类型偏好：rgf.cardTypes = { CARD_TYPE: bool }；null=未配置则全部显示
+let cardTypes = null;
 
 function readNativeSelection() {
   const checked = new Set();
@@ -69,6 +71,8 @@ function readNativeSelection() {
 
 // 条目是否被排除：原生未勾选分组 / 角色范围（无自定义规则层）
 function isExcluded(item, unchecked) {
+  // 扩展自有类型偏好：未勾选的 card_type 前端隐藏（不改写原生分组/服务端偏好）
+  if (cardTypes && item.cardType && cardTypes[item.cardType] === false) return true;
   if (unchecked.size > 0 && item.cardType) {
     for (const name of unchecked) {
       const types = NATIVE_TYPE_MAP[name];
@@ -97,6 +101,15 @@ function isExcluded(item, unchecked) {
 async function applyFilter() {
   const feed = findFeedContainer();
   if (!feed) return;
+
+  // 总开关关闭：恢复全部显示（服务端偏好与快捷按钮联动不受影响）
+  if (!enabled) {
+    for (const el of feed.querySelectorAll(ITEM_SELECTOR)) {
+      el.style.removeProperty('display');
+    }
+    updateBadge(0);
+    return;
+  }
 
   const items = [...feed.querySelectorAll(ITEM_SELECTOR)];
   const { unchecked } = readNativeSelection();
@@ -187,16 +200,17 @@ function makeQuickBtn(label, onClick) {
 // ---- 初始化与监听 ----
 async function loadAndApply() {
   const stored = await chrome.storage.sync.get([
-    STORAGE_ENABLED_KEY, 'rgf.scope',
+    STORAGE_ENABLED_KEY, 'rgf.scope', 'rgf.cardTypes',
   ]);
   enabled = stored[STORAGE_ENABLED_KEY] !== false;
   scopeFilter = Object.assign({ roleMode: 'all', onlyMyRepos: false }, stored['rgf.scope']);
+  cardTypes = stored['rgf.cardTypes'] || null;
   loaded = true;
   applyFilter();
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes['rgf.scope']) {
+  if (area === 'sync' && (changes['rgf.scope'] || changes['rgf.cardTypes'])) {
     loadAndApply();
   } else if (area === 'sync' && changes[STORAGE_ENABLED_KEY]) {
     loadAndApply();

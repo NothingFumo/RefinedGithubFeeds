@@ -11,7 +11,15 @@ function extractItem(el) {
     return node ? node.textContent.trim() : null;
   };
   const repoLink = q('a[data-hovercard-type="repository"]');
-  const actorEl = q('a[data-hovercard-type="user"]') || q('a[data-hovercard-type="organization"]');
+  // 发起者优先取条目标题（h3）内的 hovercard 链接，避免把 repo owner/协作者误当 actor
+  const heading = q('h3');
+  const headingActor = heading
+    ? heading.querySelector('a[data-hovercard-type="user"]')
+      || heading.querySelector('a[data-hovercard-type="organization"]')
+    : null;
+  const actorEl = headingActor
+    || q('a[data-hovercard-type="user"]')
+    || q('a[data-hovercard-type="organization"]');
   const eventBadge = q('[data-test-selector="feed-item-event-type"], [data-ga-click*="feed-item"]');
   // 卡片类型：主锚点 = data-hydro-view 的 feed_card.card_type（如 STARRED_REPOSITORY）
   let cardType = null;
