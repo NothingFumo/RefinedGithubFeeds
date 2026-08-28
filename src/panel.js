@@ -172,8 +172,8 @@ async function buildSubFilters(block) {
   scopeList.className = 'SelectMenu-list SelectMenu-list--borderless';
   scopeList.setAttribute('role', 'menu');
   const roleOptions = [
-    ['all', '全部角色', 'person', '显示所有发起者的动态'],
-    ['self', '只看我自己的动态', 'person', '仅显示你本人发起的动态'],
+    ['all', '全部角色', 'people', '显示所有发起者的动态'],
+    ['self', '只看我自己的动态', 'personFill', '仅显示你本人发起的动态'],
     ['orgs', '只看组织的动态', 'organization', '仅显示组织账号发起的动态'],
     ['users', '只看其他用户的动态', 'person', '仅显示其他普通用户发起的动态'],
   ];
