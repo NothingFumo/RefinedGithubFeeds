@@ -76,14 +76,9 @@ async function main() {
   })()`);
   await evaljs(ws, `__rgfReady`);
 
-  // 基线：勾选全部原生分组（模拟用户在原生面板全启用的状态）
-  await evaljs(ws, `(() => {
-    for (const inp of document.querySelectorAll('#feed-filter-menu input[data-targets="feed-filter.inputs"]')) {
-      inp.checked = true;
-    }
-    applyFilter();
-    return 'baseline';
-  })()`);
+  // 基线：扩展接管状态下全部分组显示（stub 默认 rgf.nativeGroups={}）
+  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.nativeGroups': {} }); 'baseline'`);
+  await new Promise((r) => setTimeout(r, 500));
 
   // ---- 场景 1：未配置白名单时全部显示 ----
   const s1 = await evaljs(ws, `JSON.stringify((() => ({
@@ -98,19 +93,24 @@ async function main() {
   check('spammer 显示（未配置过滤）', state1.spammer, '');
   check('快捷按钮为隐藏此类动态', state1.quickBtns.every(t => t === '隐藏此类动态'), true);
 
-  // ---- 场景 2：原生 Stars 分组联动 -> starred 条目隐藏；角标计数 ----
+  // ---- 场景 2：原生 Stars 复选框点击被接管 -> starred 条目隐藏；角标计数 ----
   await evaljs(ws, `(() => {
     const inp = document.querySelector('#feed-filter-menu input[name="Stars"]');
-    if (inp) { inp.checked = false; }
-    return 'unchecked';
+    if (!inp) return 'missing';
+    inp.click();   // 触发扩展拦截器（更新 nativeGroups + 前端过滤）
+    return 'clicked';
   })()`);
-  await evaljs(ws, `applyFilter(); 'applied'`);
-  await new Promise((r) => setTimeout(r, 400));
+  await new Promise((r) => setTimeout(r, 500));
   const s2a = JSON.parse(await evaljs(ws, `JSON.stringify({
     badge: document.querySelector('#rgf-badge').textContent,
     spammer: document.querySelector('#item-spammer').style.display })`));
   check('原生取消 Stars 后 fork 条目仍显示', s2a.spammer, '');
   check('角标计数为 2（alice+bob 均 starred）', s2a.badge, '已隐藏 2 条动态，点击临时撤销');
+  const s2c = JSON.parse(await evaljs(ws, `JSON.stringify({
+    panelStar: document.querySelector('.rgf-subfilters input[data-native-group-switch="Stars"]')?.checked,
+    storeStars: window.__rgfStore['rgf.nativeGroups']?.Stars,
+  })`));
+  check('原生点击被接管并同步面板开关', s2c.panelStar === false && s2c.storeStars === false, true);
 
   await evaljs(ws, `document.querySelector('#rgf-badge').click(); 'clicked'`);
   await new Promise((r) => setTimeout(r, 400));
@@ -123,10 +123,10 @@ async function main() {
   await evaljs(ws, `document.querySelector('#rgf-badge').click(); 'clicked'`);
   await evaljs(ws, `(() => {
     const inp = document.querySelector('#feed-filter-menu input[name="Stars"]');
-    if (inp) inp.checked = true;
-    applyFilter(); return 'checked';
+    if (inp) inp.click();   // 拦截器恢复勾选
+    return 'clicked';
   })()`);
-  await new Promise((r) => setTimeout(r, 400));
+  await new Promise((r) => setTimeout(r, 500));
   const s3 = JSON.parse(await evaljs(ws, `JSON.stringify({ spammer: document.querySelector('#item-spammer').style.display })`));
   check('恢复后状态正常', s3.spammer === '' || s3.spammer === 'none', true);
 
@@ -211,6 +211,7 @@ async function main() {
       instantSave: block.dataset.instantSave || '',
       subFilters: !!block.querySelector('.rgf-subfilters'),
       subChecks: block.querySelectorAll('.rgf-subfilters input[data-card-type]').length,
+      nativeSwitches: block.querySelectorAll('.rgf-subfilters input[data-native-group-switch]').length,
       roleRadios: block.querySelectorAll('input[data-role-mode]').length,
       scopeToggles: block.querySelectorAll('input[data-scope]').length,
       groups: [...block.querySelectorAll('.rgf-subfilters h5')].map(g => g.textContent).filter(t => ['社交动态','仓库活动','发现内容'].includes(t)),
@@ -232,6 +233,7 @@ async function main() {
   check('开关行完全仿原生结构（图标+描述+selected）', s7.nativeLikeRows, true);
   check('更细过滤分组已注入', s7.subFilters, true);
   check('十种卡片类型开关齐全', s7.subChecks, 10);
+  check('九个原生分组开关齐全（接管）', s7.nativeSwitches, 9);
   check('四个角色单选开关齐全（含全部角色）', s7.roleRadios, 4);
   check('只看我仓库独立开关存在', s7.scopeToggles, 1);
   check('类型开关按语义分三组', s7.groups, ['社交动态', '仓库活动', '发现内容']);

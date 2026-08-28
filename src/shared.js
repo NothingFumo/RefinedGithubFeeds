@@ -84,7 +84,26 @@ const OCTICON_PATHS = {
 };
 
 // 原生筛选面板分组 -> card_type 集合（isExcluded 用）
-// 未列出的分组（Announcements/Sponsors/StarredRelationships）无精确 card_type，不过滤
+// Announcements/Sponsors/StarredRelationships 无精确 card_type，开关仅视觉/服务端语义
+// 原生分组元数据：图标 + 描述（与原生面板逐项一致；面板与接管渲染共用）
+const NATIVE_GROUP_META = {
+  Announcements: { icon: 'megaphone', desc: '来自仓库的特殊讨论帖' },
+  Releases: { icon: 'tag', desc: '来自仓库的更新帖' },
+  Sponsors: { icon: 'heart', desc: '正在被赞助的相关项目或人物' },
+  Stars: { icon: 'star', desc: '人们正在 star 的仓库' },
+  Repositories: { icon: 'repo', desc: '人们创建或 fork 的仓库' },
+  RepositoryActivity: { icon: 'repo', desc: '来自仓库的 Issue 与拉取请求' },
+  Follows: { icon: 'personAdd', desc: '人们正在关注谁' },
+  Recommendations: { icon: 'markGithub', desc: '你可能喜欢的仓库与人物' },
+  StarredRelationships: { icon: 'repo', desc: '包含来自已 star 仓库的事件' },
+};
+
+// 原生分组全集（面板渲染顺序与原生一致）
+const NATIVE_GROUPS = [
+  'Announcements', 'Releases', 'Sponsors', 'Stars', 'Repositories',
+  'RepositoryActivity', 'Follows', 'Recommendations', 'StarredRelationships',
+];
+
 const NATIVE_TYPE_MAP = {
   Releases: 'RELEASE',
   Sponsors: null,

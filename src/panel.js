@@ -7,6 +7,7 @@ const BLOCK_CLASS = 'rgf-filter-block';
 // 模块级状态（由 buildSubFilters 填充；loaded 由 content.js 声明共享）
 let scopeState = null;      // { roleMode, onlyMyRepos }
 let cardTypesLive = null;   // rgf.cardTypes 最新值（开关 change 以它为基底，防并发覆盖）
+let nativeGroupsLive = null; // rgf.nativeGroups 最新值
 
 // ---- 草稿状态 ----
 // 真实结构（登录态抓取）：
@@ -103,6 +104,7 @@ function ensureLoaded() {
 // 存储键：角色范围（与 content.js 共享）
 const SCOPE_KEY = 'rgf.scope';
 const CARD_TYPES_KEY = 'rgf.cardTypes';
+const NATIVE_GROUPS_KEY = 'rgf.nativeGroups';
 
 // 完全仿原生面板行：结构与原生 SelectMenu-item 逐字节同构
 // （图标 + 标题 + 描述；不挂 data-action 以免被原生 Catalyst 控制器接管）
@@ -139,26 +141,50 @@ function makeNativeRow({ name, iconKey, checked, label, desc, input }) {
   return rowEl;
 }
 
-// 原生分组元数据：图标 + 描述文案（与原生面板一致）
-const NATIVE_GROUP_META = {
-  Announcements: { icon: 'megaphone', desc: '来自仓库的特殊讨论帖' },
-  Releases: { icon: 'tag', desc: '来自仓库的更新帖' },
-  Sponsors: { icon: 'heart', desc: '正在被赞助的相关项目或人物' },
-  Stars: { icon: 'star', desc: '人们正在 star 的仓库' },
-  Repositories: { icon: 'repo', desc: '人们创建或 fork 的仓库' },
-  RepositoryActivity: { icon: 'repo', desc: '来自仓库的 Issue 与拉取请求' },
-  Follows: { icon: 'personAdd', desc: '人们正在关注谁' },
-  Recommendations: { icon: 'markGithub', desc: '你可能喜欢的仓库与人物' },
-};
-
 async function buildSubFilters(block) {
-  const stored = await chrome.storage.sync.get([SCOPE_KEY, CARD_TYPES_KEY]);
+  const stored = await chrome.storage.sync.get([SCOPE_KEY, CARD_TYPES_KEY, NATIVE_GROUPS_KEY]);
   scopeState = Object.assign({ roleMode: 'all', onlyMyRepos: false }, stored[SCOPE_KEY]);
   cardTypesLive = stored[CARD_TYPES_KEY] || {};
+  nativeGroupsLive = stored[NATIVE_GROUPS_KEY] || {};
 
   // 复用原生 SelectMenu 标记：与 Events 分组完全同构（tmp-px-3 mt-2 标题组 + SelectMenu-list）
   const section = document.createElement('div');
   section.className = 'rgf-subfilters';
+
+  // ---- 原生分组（接管：扩展为唯一状态源，原生复选框为镜像）----
+  const nativeHead = document.createElement('div');
+  nativeHead.className = 'tmp-px-3 mt-2';
+  const nativeH5 = document.createElement('h5');
+  nativeH5.className = 'd-flex flex-items-center';
+  nativeH5.textContent = 'Events';
+  nativeHead.appendChild(nativeH5);
+  section.appendChild(nativeHead);
+
+  const nativeList = document.createElement('div');
+  nativeList.className = 'SelectMenu-list SelectMenu-list--borderless';
+  nativeList.setAttribute('role', 'menu');
+  for (const name of NATIVE_GROUPS) {
+    const meta = NATIVE_GROUP_META[name] || {};
+    const nchk = document.createElement('input');
+    nchk.type = 'checkbox';
+    nchk.checked = nativeGroupsLive[name] !== false;
+    nchk.dataset.nativeGroupSwitch = name;
+    nchk.addEventListener('change', async () => {
+      const next = Object.assign({}, nativeGroupsLive || {}, { [name]: nchk.checked });
+      nativeGroupsLive = next;
+      await chrome.storage.sync.set({ [NATIVE_GROUPS_KEY]: next });
+      applyFilter();
+    });
+    nativeList.appendChild(makeNativeRow({
+      name,
+      iconKey: meta.icon || 'repo',
+      checked: nchk.checked,
+      label: name,
+      desc: meta.desc || '',
+      input: nchk,
+    }));
+  }
+  section.appendChild(nativeList);
 
   // ---- 角色范围（单选：all/self/orgs/users）----
   const scopeHead = document.createElement('div');
@@ -298,7 +324,8 @@ injectPanelBlock();
 
 // 快捷按钮等外部路径写入 rgf.cardTypes 时，重建面板开关状态保持一一对应
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'sync' || !changes[CARD_TYPES_KEY]) return;
+  if (area !== 'sync') return;
+  if (!changes[CARD_TYPES_KEY] && !changes[NATIVE_GROUPS_KEY]) return;
   const block = document.querySelector('#feed-filter-menu .' + BLOCK_CLASS);
   if (!block) return;
   const sub = block.querySelector('.rgf-subfilters');

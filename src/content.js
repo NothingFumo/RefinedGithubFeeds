@@ -58,28 +58,23 @@ function updateBadge(hiddenCount) {
 let scopeFilter = { roleMode: 'all', onlyMyRepos: false };
 // 扩展自有类型偏好：rgf.cardTypes = { CARD_TYPE: bool }；null=未配置则全部显示
 let cardTypes = null;
+// 原生分组接管状态：rgf.nativeGroups = { GROUP: bool }；null/缺省=全部显示
+// 扩展是唯一过滤状态源；原生复选框仅作视觉镜像并被拦截
+let nativeGroups = null;
 
-function readNativeSelection() {
-  const checked = new Set();
-  const unchecked = new Set();
-  for (const input of document.querySelectorAll(
-    '#feed-filter-menu input[data-targets="feed-filter.inputs"][name]')) {
-    (input.checked ? checked : unchecked).add(input.name);
-  }
-  return { checked, unchecked };
-}
-
-// 条目是否被排除：原生未勾选分组 / 角色范围（无自定义规则层）
-function isExcluded(item, unchecked) {
-  // 扩展自有类型偏好：未勾选的 card_type 前端隐藏（不改写原生分组/服务端偏好）
-  if (cardTypes && item.cardType && cardTypes[item.cardType] === false) return true;
-  if (unchecked.size > 0 && item.cardType) {
-    for (const name of unchecked) {
-      const types = NATIVE_TYPE_MAP[name];
-      if (!types) continue;
-      if (types.split(',').includes(item.cardType)) return true;
+// 条目是否被排除：扩展状态（原生分组接管 + 类型偏好）+ 角色范围
+function isExcluded(item) {
+  // 原生分组接管：未勾选的分组 -> 组内全部 card_type 隐藏
+  if (nativeGroups && item.cardType) {
+    for (const name of NATIVE_GROUPS) {
+      if (nativeGroups[name] === false) {
+        const types = NATIVE_TYPE_MAP[name];
+        if (types && types.split(',').includes(item.cardType)) return true;
+      }
     }
   }
+  // 扩展自有类型偏好：未勾选的 card_type 前端隐藏
+  if (cardTypes && item.cardType && cardTypes[item.cardType] === false) return true;
   // 角色范围：仅当条目有 actor 时可判定；无 actor 的推荐/趋势不受影响
   const roleMode = scopeFilter.roleMode || 'all';
   if (roleMode !== 'all' && item.actor) {
@@ -112,13 +107,12 @@ async function applyFilter() {
   }
 
   const items = [...feed.querySelectorAll(ITEM_SELECTOR)];
-  const { unchecked } = readNativeSelection();
   const parsed = items.map((el) => ({ el, item: extractItem(el) }));
 
-  // 裁决 = 原生勾选联动 + 角色范围（不受 suspended 影响：用户明确的类型偏好）
+  // 裁决 = 扩展状态（原生分组接管 + 类型偏好 + 角色范围），单一状态源
   // wouldHide 始终按"未撤销"计算（供角标展示恢复后将被滤掉的数量）
   const results = parsed.map(({ el, item }) => {
-    const excluded = isExcluded(item, unchecked);
+    const excluded = isExcluded(item);
     return { el, item, hidden: excluded && !suspended, wouldHide: excluded };
   });
 
@@ -133,6 +127,7 @@ async function applyFilter() {
     el.style.setProperty('display', hidden ? 'none' : '', 'important');
     attachQuickButtons(el);
   }
+  syncNativeCheckboxes();
   updateBadge(badgeCount);
 }
 
@@ -198,17 +193,18 @@ function makeQuickBtn(label, onClick) {
 // ---- 初始化与监听 ----
 async function loadAndApply() {
   const stored = await chrome.storage.sync.get([
-    STORAGE_ENABLED_KEY, 'rgf.scope', 'rgf.cardTypes',
+    STORAGE_ENABLED_KEY, 'rgf.scope', 'rgf.cardTypes', 'rgf.nativeGroups',
   ]);
   enabled = stored[STORAGE_ENABLED_KEY] !== false;
   scopeFilter = Object.assign({ roleMode: 'all', onlyMyRepos: false }, stored['rgf.scope']);
   cardTypes = stored['rgf.cardTypes'] || null;
+  nativeGroups = stored['rgf.nativeGroups'] || null;
   loaded = true;
   applyFilter();
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && (changes['rgf.scope'] || changes['rgf.cardTypes'])) {
+  if (area === 'sync' && (changes['rgf.scope'] || changes['rgf.cardTypes'] || changes['rgf.nativeGroups'])) {
     loadAndApply();
   } else if (area === 'sync' && changes[STORAGE_ENABLED_KEY]) {
     loadAndApply();
@@ -223,6 +219,57 @@ getBadge().addEventListener('click', () => {
   suspended = !suspended;
   applyFilter();
 });
+
+// ---- 接管原生 Filter 面板 ----
+// 原生复选框降级为扩展状态的视觉镜像；点击被拦截并改写扩展状态
+// （阻止 Catalyst 提交服务端偏好，避免条目被服务端移除导致临时撤销失效）
+function syncNativeCheckboxes() {
+  const filter = document.querySelector('feed-filter[data-target="feed-container.filter"]');
+  if (!filter) return;
+  for (const inp of filter.querySelectorAll('input[data-targets="feed-filter.inputs"][name]')) {
+    const wanted = nativeGroups ? nativeGroups[inp.name] !== false : true;
+    if (inp.checked !== wanted) inp.checked = wanted;
+  }
+}
+
+function hijackNativePanel() {
+  const filter = document.querySelector('feed-filter[data-target="feed-container.filter"]');
+  if (!filter || filter.dataset.rgfHijacked) return;
+  filter.dataset.rgfHijacked = 'true';
+  filter.addEventListener('click', (e) => {
+    const input = e.target.closest('input[data-targets="feed-filter.inputs"][name]');
+    if (input) {
+      e.preventDefault();
+      e.stopPropagation();
+      // 基于扩展状态翻转（不读 DOM checked：checkbox 默认动作时序会先翻转它）
+      const next = Object.assign({}, nativeGroups || {});
+      next[input.name] = next[input.name] === false ? true : false;
+      nativeGroups = next;
+      chrome.storage.sync.set({ 'rgf.nativeGroups': next });
+      applyFilter();
+      return;
+    }
+    const btn = e.target.closest('button');
+    if (btn) {
+      e.preventDefault();
+      e.stopPropagation();
+      // Save：扩展即时生效，无需提交；Reset：恢复全部分组
+      if (btn.matches('[data-action*="resetFilterToDefault"]') || /reset/i.test(btn.textContent)) {
+        nativeGroups = {};
+        chrome.storage.sync.set({ 'rgf.nativeGroups': {} });
+        applyFilter();
+      }
+    }
+  });
+}
+
+// 面板可能晚于页面加载出现（用户打开 Filter 才挂载），观察器兜底
+const nativePanelObserver = new MutationObserver(() => {
+  hijackNativePanel();
+  syncNativeCheckboxes();
+});
+nativePanelObserver.observe(document.body, { childList: true, subtree: true });
+hijackNativePanel();
 
 // 去抖：GitHub 渲染与自身 DOM 写入会触发高频 mutation，合并为一次重过滤
 let filterTimer = null;
