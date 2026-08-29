@@ -232,33 +232,54 @@ function syncNativeCheckboxes() {
   }
 }
 
+function toggleNativeGroup(name) {
+  const next = Object.assign({}, nativeGroups || {});
+  next[name] = next[name] === false ? true : false;
+  nativeGroups = next;
+  chrome.storage.sync.set({ 'rgf.nativeGroups': next });
+  applyFilter();
+}
+
+function closeFilterMenu() {
+  const menu = document.getElementById('feed-filter-menu');
+  if (menu) menu.removeAttribute('open');
+}
+
 function hijackNativePanel() {
   const filter = document.querySelector('feed-filter[data-target="feed-container.filter"]');
   if (!filter || filter.dataset.rgfHijacked) return;
   filter.dataset.rgfHijacked = 'true';
   filter.addEventListener('click', (e) => {
+    // 复选框：拦截并改写扩展状态
     const input = e.target.closest('input[data-targets="feed-filter.inputs"][name]');
     if (input) {
       e.preventDefault();
       e.stopPropagation();
       // 基于扩展状态翻转（不读 DOM checked：checkbox 默认动作时序会先翻转它）
-      const next = Object.assign({}, nativeGroups || {});
-      next[input.name] = next[input.name] === false ? true : false;
-      nativeGroups = next;
-      chrome.storage.sync.set({ 'rgf.nativeGroups': next });
-      applyFilter();
+      toggleNativeGroup(input.name);
+      return;
+    }
+    // 整行 label（原生行是 label，点击文本区域是主交互）：同样接管
+    const row = e.target.closest('label[data-action*="feed-filter#handleToggle"]');
+    if (row) {
+      e.preventDefault();
+      e.stopPropagation();
+      const name = row.dataset.name;
+      if (name) toggleNativeGroup(name);
       return;
     }
     const btn = e.target.closest('button');
     if (btn) {
       e.preventDefault();
       e.stopPropagation();
-      // Save：扩展即时生效，无需提交；Reset：恢复全部分组
+      // Save：扩展状态即时生效（开关操作已写 storage），仅关闭菜单作为保存反馈
+      // Reset：恢复全部分组
       if (btn.matches('[data-action*="resetFilterToDefault"]') || /reset/i.test(btn.textContent)) {
         nativeGroups = {};
         chrome.storage.sync.set({ 'rgf.nativeGroups': {} });
         applyFilter();
       }
+      closeFilterMenu();
     }
   });
 }

@@ -380,6 +380,30 @@ async function main() {
     hidden: [...document.querySelectorAll('article.js-feed-item-component')].filter(e => e.style.display === 'none').map(e => e.id),
   }))())`));
   check('全勾选后无隐藏条目', s13.hidden, []);
+  const s13b = JSON.parse(await evaljs(ws, `JSON.stringify({
+    menuOpen: document.getElementById('feed-filter-menu')?.hasAttribute('open'),
+  })`));
+  check('Save 后菜单正常关闭（保存反馈）', s13b.menuOpen, false);
+
+  // 原生 label 行点击（主交互路径）被接管：点 Stars 行文本 -> 扩展状态翻转
+  await evaljs(ws, `(() => {
+    document.getElementById('feed-filter-menu')?.setAttribute('open', '');
+    const row = document.querySelector('#feed-filter-menu label[data-name="Stars"]');
+    row?.click();
+    return 'label-clicked';
+  })()`);
+  console.log('label clicked');
+  await new Promise((r) => setTimeout(r, 500));
+  const s13c = JSON.parse(await evaljs(ws, `JSON.stringify({
+    store: window.__rgfStore['rgf.nativeGroups'],
+    storeStars: window.__rgfStore['rgf.nativeGroups']?.Stars,
+    starHidden: document.querySelector('#item-alice')?.style.display === 'none',
+    aliceDisplay: document.querySelector('#item-alice')?.style.display,
+    labelFound: !!document.querySelector('#feed-filter-menu label[data-name="Stars"]'),
+  })`));
+  check('原生 label 点击被接管并隐藏条目', s13c.storeStars === false && s13c.starHidden, true);
+  await evaljs(ws, `chrome.storage.sync.set({ 'rgf.nativeGroups': {} }); 'cleared'`);
+  await new Promise((r) => setTimeout(r, 400));
 
   let failed = 0;
   for (const c of CHECKS) {
