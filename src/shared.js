@@ -18,6 +18,10 @@ function extractItem(el) {
       || heading.querySelector('a[data-hovercard-type="organization"]')
     : null;
   const actorEl = headingActor
+    // 新版 /feed 的组织卡（如 Release）标题内没有 actor 链接，正文却混有多个
+    // 无关 user hovercard；条目头像（feed-item-user-avatar）才是发起者，
+    // 须先于正文链接回退
+    || q('a:has(> img.feed-item-user-avatar)')
     || q('a[data-hovercard-type="user"]')
     || q('a[data-hovercard-type="organization"]');
   const eventBadge = q('[data-test-selector="feed-item-event-type"], [data-ga-click*="feed-item"]');
@@ -50,10 +54,18 @@ function extractItem(el) {
       else if (/\bstarred\b/.test(plain)) cardType = 'STARRED_REPOSITORY';
     }
   }
-  // 发起者：优先 hovercard 链接（actor 头像/用户名），避免把仓库 owner 误当 actor
+// 链接 -> 登录名：GitHub 条目内 href 多为绝对地址（https://github.com/<login>），
+// 需剥掉 origin 再取首段；相对路径（/<login>）同样适用
+function loginFromHref(href) {
+  if (!href) return null;
+  const path = /^https?:\/\//i.test(href) ? href.replace(/^https?:\/\/[^/]+/i, '') : href;
+  return path.split(/[?#]/)[0].split('/').find(Boolean) || null;
+}
+
+// 发起者：优先 hovercard 链接（actor 头像/用户名），避免把仓库 owner 误当 actor
   let actor = null;
   if (actorEl) {
-    actor = actorEl.getAttribute('href')?.split('/')[1] ||
+    actor = loginFromHref(actorEl.getAttribute('href')) ||
             actorEl.textContent.replace(/^@\s*/, '').trim() || null;
   }
   return {
