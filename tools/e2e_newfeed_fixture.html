@@ -14,7 +14,10 @@ RefinedGithubFeeds - 新版 /feed 页面结构回归夹具（自断言，无需 
 
 条目覆盖四类新版卡片：MERGED_PULL_REQUEST（user 发起者）、RELEASE（organization
 发起者，h3 内无 actor 链接，仅头像为 org hovercard）、STARRED_REPOSITORY、
-ADDED_TO_LIST。新版页面已无 data-feed-item-type / data-test-selector 标记。
+ADDED_TO_LIST，均带 hydro card_type 主锚点；另有 FOLLOW（feed-person 角标）、
+CREATED_REPOSITORY（feed-repo 角标）、PRIVATE_TO_PUBLIC_REPOSITORY（feed-public
+SVG 角标）、ADDED_TO_LIST（feed-star 角标 + 加列表文案）四个无主锚点的次级
+回退样例，覆盖全部实抓卡片信号。新版页面已无 data-feed-item-type 标记。
 
 脚本依次执行过滤、接管、角标、面板注入等断言，结果写入 <pre id="rgf-e2e-result">。
 
@@ -191,6 +194,23 @@ ADDED_TO_LIST。新版页面已无 data-feed-item-type / data-test-selector 标�
             </div>
           </article>
 
+          <!-- 分组发布体（card_sub_position=1）：无头像、h3 为发布标题链接，
+               正文混有 user 提及——裁决应继承其主卡而非正文链接 -->
+          <article id="item-release-body" data-hydro-view='{"event_type":"feeds.feed_visible","payload":{"feed_card":{"card_type":"RELEASE","card_sub_position":1,"gatherer":"release_mysql"}}}' data-view-component="true" class="js-feed-item-component js-feed-item-view js-feed-item-next-component d-flex flex-column width-full flex-items-baseline pt-2 tmp-pt-2 pb-2 tmp-pb-2">
+            <div data-view-component="true" class="feed-item-content d-flex flex-column pt-2 tmp-pt-2 pb-0 tmp-pb-0 border-0 color-border-default rounded-1 width-full height-fit">
+              <div class="rounded-1">
+                <div class="tmp-px-3">
+                  <div>
+                    <h3 data-view-component="true" class="lh-condensed mt-2 tmp-mt-2 mb-2 tmp-mb-2"><a href="/acme-org/lib/releases/tag/v2.0.0" data-view-component="true" class="Link--primary Link text-bold">lib v2.0.0</a></h3>
+                  </div>
+                  <section aria-label="release body preview 4-1">
+                    <p>Notes by <a data-hovercard-type="user" href="/release-bot">@release-bot</a>, shipped with love.</p>
+                  </section>
+                </div>
+              </div>
+            </div>
+          </article>
+
           <article id="item-starred" data-hydro-view='{"event_type":"feeds.feed_visible","payload":{"feed_card":{"card_type":"STARRED_REPOSITORY","gatherer":"repostar_mysql"}}}' data-view-component="true" class="js-feed-item-component js-feed-item-view js-feed-item-next-component d-flex flex-column width-full flex-items-baseline pt-2 tmp-pt-2 pb-2 tmp-pb-2">
             <div data-view-component="true" class="feed-item-content d-flex flex-column pt-2 tmp-pt-2 pb-2 tmp-pb-2 border color-border-default rounded-2 color-shadow-small width-full height-fit">
               <div class="rounded-2 py-1">
@@ -228,6 +248,120 @@ ADDED_TO_LIST。新版页面已无 data-feed-item-type / data-test-selector 标�
                       <div class="position-relative">
                         <a data-hovercard-type="user" href="/alice" data-view-component="true" class="Link d-block"><img src="" alt="@alice profile" height="40" width="40" class="feed-item-user-avatar avatar circle box-shadow-none"></a>
                         <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-feed-star circle feed-item-heading-icon feed-next color-fg-done position-absolute"><path d="M8 .25a.75.75 0 0 1 .673.418Z"></path></svg>
+                      </div>
+                    </div>
+                    <div data-view-component="true" class="flex-1 ml-1 tmp-ml-1 mb-1 tmp-mb-1">
+                      <h3 data-view-component="true" class="h5 text-normal color-fg-muted d-flex flex-items-center flex-row flex-nowrap width-fit">
+                        <span class="flex-1">
+                          <span class="flex-shrink-0">
+                            <a data-hovercard-type="user" href="/alice" data-view-component="true" class="Link--primary Link text-bold">alice</a>
+                            added a repository to
+                            <a href="/stars/alice/lists/ai" data-view-component="true" class="Link--primary Link">their list</a>
+                          </span>
+                          <span class="overflow-auto"><span data-view-component="true" class="Truncate"><span data-view-component="true" class="Truncate-text"><a data-hovercard-type="repository" href="/other/toolbox" data-view-component="true" class="Link--primary Link text-bold">other/toolbox</a></span></span></span>
+                        </span>
+                      </h3>
+                    </div>
+                  </header>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- 次级回退样例：无 data-hydro-view 主锚点，仅靠标题角标/文案归类（实抓信号） -->
+          <article id="item-follow-dg" data-view-component="true" class="js-feed-item-component js-feed-item-view js-feed-item-next-component d-flex flex-column width-full flex-items-baseline pt-2 tmp-pt-2 pb-2 tmp-pb-2">
+            <div data-view-component="true" class="feed-item-content d-flex flex-column pt-2 tmp-pt-2 pb-2 tmp-pb-2 border color-border-default rounded-2 color-shadow-small width-full height-fit">
+              <div class="rounded-2 py-1">
+                <div class="tmp-px-3">
+                  <header data-view-component="true" class="mt-1 tmp-mt-1 mb-2 tmp-mb-2 width-full d-flex flex-justify-between">
+                    <div class="mr-2">
+                      <div class="position-relative">
+                        <a data-hovercard-type="user" href="/carol" data-view-component="true" class="Link d-block"><img src="" alt="@carol profile" height="40" width="40" class="feed-item-user-avatar avatar circle box-shadow-none"></a>
+                        <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-feed-person circle feed-item-heading-icon feed-next color-fg-accent position-absolute"><path d="M7.9 8.548Z"></path></svg>
+                      </div>
+                    </div>
+                    <div data-view-component="true" class="flex-1 ml-1 tmp-ml-1 mb-1 tmp-mb-1">
+                      <h3 data-view-component="true" class="h5 text-normal color-fg-muted d-flex flex-items-center flex-row flex-nowrap width-fit">
+                        <span class="flex-1">
+                          <span class="flex-shrink-0">
+                            <a data-hovercard-type="user" href="/carol" data-view-component="true" class="Link--primary Link text-bold">carol</a>
+                            followed
+                            <a data-hovercard-type="user" href="/dave" data-view-component="true" class="Link--primary Link text-bold">dave</a>
+                          </span>
+                        </span>
+                      </h3>
+                    </div>
+                  </header>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article id="item-created-dg" data-view-component="true" class="js-feed-item-component js-feed-item-view js-feed-item-next-component d-flex flex-column width-full flex-items-baseline pt-2 tmp-pt-2 pb-2 tmp-pb-2">
+            <div data-view-component="true" class="feed-item-content d-flex flex-column pt-2 tmp-pt-2 pb-2 tmp-pb-2 border color-border-default rounded-2 color-shadow-small width-full height-fit">
+              <div class="rounded-2 py-1">
+                <div class="tmp-px-3">
+                  <header data-view-component="true" class="mt-1 tmp-mt-1 mb-2 tmp-mb-2 width-full d-flex flex-justify-between">
+                    <div class="mr-2">
+                      <div class="position-relative">
+                        <a data-hovercard-type="user" href="/carol" data-view-component="true" class="Link d-block"><img src="" alt="@carol profile" height="40" width="40" class="feed-item-user-avatar avatar circle box-shadow-none"></a>
+                        <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-feed-repo circle feed-item-heading-icon feed-next color-fg-muted position-absolute"><path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75Z"></path></svg>
+                      </div>
+                    </div>
+                    <div data-view-component="true" class="flex-1 ml-1 tmp-ml-1 mb-1 tmp-mb-1">
+                      <h3 data-view-component="true" class="h5 text-normal color-fg-muted d-flex flex-items-center flex-row flex-nowrap width-fit">
+                        <span class="flex-1">
+                          <span class="flex-shrink-0">
+                            <a data-hovercard-type="user" href="/carol" data-view-component="true" class="Link--primary Link text-bold">carol</a>
+                            created a repository
+                          </span>
+                          <span class="overflow-auto"><span data-view-component="true" class="Truncate"><span data-view-component="true" class="Truncate-text"><a data-hovercard-type="repository" href="/carol/newrepo" data-view-component="true" class="Link--primary Link text-bold">carol/newrepo</a></span></span></span>
+                        </span>
+                      </h3>
+                    </div>
+                  </header>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article id="item-public-dg" data-view-component="true" class="js-feed-item-component js-feed-item-view js-feed-item-next-component d-flex flex-column width-full flex-items-baseline pt-2 tmp-pt-2 pb-2 tmp-pb-2">
+            <div data-view-component="true" class="feed-item-content d-flex flex-column pt-2 tmp-pt-2 pb-2 tmp-pb-2 border color-border-default rounded-2 color-shadow-small width-full height-fit">
+              <div class="rounded-2 py-1">
+                <div class="tmp-px-3">
+                  <header data-view-component="true" class="mt-1 tmp-mt-1 mb-2 tmp-mb-2 width-full d-flex flex-justify-between">
+                    <div class="mr-2">
+                      <div class="position-relative">
+                        <a data-hovercard-type="user" href="/carol" data-view-component="true" class="Link d-block"><img src="" alt="@carol profile" height="40" width="40" class="feed-item-user-avatar avatar circle box-shadow-none"></a>
+                        <img src="./feed-public-7093e0038c42.svg" alt="feed-public" data-view-component="true" class="circle feed-item-heading-icon feed-next position-absolute">
+                      </div>
+                    </div>
+                    <div data-view-component="true" class="flex-1 ml-1 tmp-ml-1 mb-1 tmp-mb-1">
+                      <h3 data-view-component="true" class="h5 text-normal color-fg-muted d-flex flex-items-center flex-row flex-nowrap width-fit">
+                        <span class="flex-1">
+                          <span class="flex-shrink-0">
+                            <a data-hovercard-type="user" href="/carol" data-view-component="true" class="Link--primary Link text-bold">carol</a>
+                            made this repository public
+                          </span>
+                          <span class="overflow-auto"><span data-view-component="true" class="Truncate"><span data-view-component="true" class="Truncate-text"><a data-hovercard-type="repository" href="/carol/secret" data-view-component="true" class="Link--primary Link text-bold">carol/secret</a></span></span></span>
+                        </span>
+                      </h3>
+                    </div>
+                  </header>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article id="item-added-dg" data-view-component="true" class="js-feed-item-component js-feed-item-view js-feed-item-next-component d-flex flex-column width-full flex-items-baseline pt-2 tmp-pt-2 pb-2 tmp-pb-2">
+            <div data-view-component="true" class="feed-item-content d-flex flex-column pt-2 tmp-pt-2 pb-2 tmp-pb-2 border color-border-default rounded-2 color-shadow-small width-full height-fit">
+              <div class="rounded-2 py-1">
+                <div class="tmp-px-3">
+                  <header data-view-component="true" class="mt-1 tmp-mt-1 mb-2 tmp-mb-2 width-full d-flex flex-justify-between">
+                    <div class="mr-2">
+                      <div class="position-relative">
+                        <a data-hovercard-type="user" href="/alice" data-view-component="true" class="Link d-block"><img src="" alt="@alice profile" height="40" width="40" class="feed-item-user-avatar avatar circle box-shadow-none"></a>
+                        <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-feed-star circle feed-item-heading-icon feed-next color-fg-attention position-absolute"><path d="M8 .25a.75.75 0 0 1 .673.418Z"></path></svg>
                       </div>
                     </div>
                     <div data-view-component="true" class="flex-1 ml-1 tmp-ml-1 mb-1 tmp-mb-1">
@@ -289,15 +423,34 @@ ADDED_TO_LIST。新版页面已无 data-feed-item-type / data-test-selector 标�
   check('扩展初始化（角标出现）', !!ready, true);
 
   // 场景 1：基线 —— 新版结构全部显示、快捷按钮挂载、注入区块挂在新版面板宿主内
-  await until(() => document.querySelectorAll('.rgf-quick-btn button').length >= 4);
-  check('基线：四个条目全部显示',
-    ['item-merged', 'item-release', 'item-starred', 'item-listed'].every(visible), true);
+  await until(() => document.querySelectorAll('.rgf-quick-btn button').length >= 9);
+  const ALL_ITEMS = ['item-merged', 'item-release', 'item-release-body', 'item-starred', 'item-listed',
+    'item-follow-dg', 'item-created-dg', 'item-public-dg', 'item-added-dg'];
+  check('基线：九个条目全部显示', ALL_ITEMS.every(visible), true);
   check('基线：角标文案', badgeText(), '暂无隐藏动态');
   check('基线：条目挂载快捷按钮',
-    document.querySelectorAll('.rgf-quick-btn button').length >= 4, true);
+    document.querySelectorAll('.rgf-quick-btn button').length >= 9, true);
   const block = await until(() =>
     document.querySelector('#feed-filter-menu details-menu feed-filter .pt-2.overflow-auto > .rgf-filter-block'));
   check('面板：注入区块进入新版宿主（details > details-menu > feed-filter）', !!block, true);
+
+  // 场景 1.5：次级回退分类 —— 无 hydro 主锚点的条目按标题角标/文案归类，
+  // 经快捷按钮写入 rgf.cardTypes 的键名验证归类结果
+  const storedCardTypes = () => window.__rgfStore['rgf.cardTypes'] || {};
+  const hideByQuickBtn = async (id, key) => {
+    document.querySelector(`#${id} .rgf-quick-btn button`).click();
+    await until(() => storedCardTypes()[key] === false);
+    check(`回退：${id} 归类为 ${key}`, storedCardTypes()[key], false);
+  };
+  await hideByQuickBtn('item-follow-dg', 'FOLLOW');
+  await hideByQuickBtn('item-created-dg', 'CREATED_REPOSITORY');
+  await hideByQuickBtn('item-public-dg', 'PRIVATE_TO_PUBLIC_REPOSITORY');
+  await hideByQuickBtn('item-added-dg', 'ADDED_TO_LIST');
+  check('回退：star 角标 + 加列表文案未被误判为 STARRED_REPOSITORY',
+    storedCardTypes().STARRED_REPOSITORY, undefined);
+  await chrome.storage.sync.set({ 'rgf.cardTypes': {} });
+  await until(() => ALL_ITEMS.every(visible));
+  check('回退：类型偏好重置后全部恢复显示', ALL_ITEMS.every(visible), true);
 
   // 场景 2：原生分组接管（storage 驱动 -> 前端隐藏 + 原生复选框/注入开关双向镜像）
   await chrome.storage.sync.set({ 'rgf.nativeGroups': { RepositoryActivity: false } });
@@ -323,12 +476,14 @@ ADDED_TO_LIST。新版页面已无 data-feed-item-type / data-test-selector 标�
   await until(() => visible('item-merged') === false);
   check('撤销：再次点击恢复过滤', visible('item-merged'), false);
 
-  // 场景 4：角色范围 —— org 发起者判定（RELEASE 条目 h3 无 actor 链接，靠 org hovercard 头像）
+  // 场景 4：角色范围 —— org 发起者判定（RELEASE 条目 h3 无 actor 链接，靠 org hovercard 头像）；
+  // 分组发布体（sub_position=1，正文混有 user 提及）必须继承主卡裁决而非误判正文链接
   await chrome.storage.sync.set({ 'rgf.nativeGroups': {} });
   await until(() => visible('item-merged'));
   await chrome.storage.sync.set({ 'rgf.scope': { roleMode: 'orgs' } });
   await until(() => visible('item-release') && !visible('item-merged'));
   check('角色：只看组织时 org 条目显示', visible('item-release'), true);
+  check('角色：分组发布体随组织主卡显示', visible('item-release-body'), true);
   check('角色：只看组织时用户条目隐藏',
     [visible('item-merged'), visible('item-starred'), visible('item-listed')], [false, false, false]);
   await chrome.storage.sync.set({ 'rgf.scope': { roleMode: 'all' } });
