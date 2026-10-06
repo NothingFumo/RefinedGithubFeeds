@@ -27,31 +27,49 @@ function extractItem(el) {
   const eventBadge = q('[data-test-selector="feed-item-event-type"], [data-ga-click*="feed-item"]');
   // 卡片类型：主锚点 = data-hydro-view 的 feed_card.card_type（如 STARRED_REPOSITORY）
   let cardType = null;
+  // 分组发布的从属位置：>0 为随主卡展开的正文预览卡
+  let cardSubPosition = null;
   const hydroEl = el.matches('[data-hydro-view]') ? el : el.querySelector('[data-hydro-view]');
   if (hydroEl) {
     try {
       const payload = JSON.parse(hydroEl.getAttribute('data-hydro-view'));
-      cardType = (payload?.payload?.feed_card?.card_type || null);
+      const card = payload?.payload?.feed_card;
+      cardType = (card?.card_type || null);
+      // 分组发布的正文预览卡：sub_position > 0 表示随主卡展开的从属条目
+      cardSubPosition = typeof card?.card_sub_position === 'number' ? card.card_sub_position : null;
     } catch { /* JSON 损坏时降级到次级信号 */ }
   }
   // 次级锚点（hydro 缺失/损坏时的精确回退，全部来自实抓结构）：
-  //   标题图标 feed-star/feed-forked/feed-merged/feed-tag → 四种社交与仓库动态
-  //   固定文案 "Recommended for you" / "Trending repositories" → 两类推荐
+  //   高特异文案先行——ADDED_TO_LIST 与 Star 共用 feed-star 角标，只能靠文案区分
+  //   标题角标 octicon：feed-person→FOLLOW、feed-repo→CREATED_REPOSITORY、
+  //     feed-forked/feed-merged/feed-tag/feed-star
+  //   私有转公开的标题图标是自定义 SVG（feed-public.svg），无 octicon 类
+  //   通用动词文案：released/forked/starred/followed/created a repository/
+  //     made this repository public；推荐语 "Recommended for you"/"Trending repositories"
   if (!cardType) {
-    const icon = el.querySelector('[class*="feed-item-heading-icon"]') ||
-                 el.querySelector('[class*="octicon-feed-"]');
-    const iconCls = icon ? icon.getAttribute('class') : '';
-    if (/octicon-feed-star\b/.test(iconCls)) cardType = 'STARRED_REPOSITORY';
-    else if (/octicon-feed-forked\b/.test(iconCls)) cardType = 'FORKED_REPOSITORY';
-    else if (/octicon-feed-merged\b/.test(iconCls)) cardType = 'MERGED_PULL_REQUEST';
-    else if (/octicon-feed-tag\b/.test(iconCls)) cardType = 'RELEASE';
+    const plain = el.textContent;
+    if (/\bRecommended for you\b/.test(plain)) cardType = 'REPOSITORY_RECOMMENDATION';
+    else if (/\bTrending repositories\b/.test(plain)) cardType = 'TRENDING_REPOSITORY';
+    else if (/\badded a repository to\b/.test(plain)) cardType = 'ADDED_TO_LIST';
     else {
-      const plain = el.textContent;
-      if (/\bRecommended for you\b/.test(plain)) cardType = 'REPOSITORY_RECOMMENDATION';
-      else if (/\bTrending repositories\b/.test(plain)) cardType = 'TRENDING_REPOSITORY';
-      else if (/\breleased\b/.test(plain)) cardType = 'RELEASE';
+      const icon = el.querySelector('[class*="feed-item-heading-icon"]') ||
+                   el.querySelector('[class*="octicon-feed-"]');
+      const iconCls = icon ? icon.getAttribute('class') : '';
+      if (/octicon-feed-person\b/.test(iconCls)) cardType = 'FOLLOW';
+      else if (/octicon-feed-repo\b/.test(iconCls)) cardType = 'CREATED_REPOSITORY';
+      else if (/octicon-feed-forked\b/.test(iconCls)) cardType = 'FORKED_REPOSITORY';
+      else if (/octicon-feed-merged\b/.test(iconCls)) cardType = 'MERGED_PULL_REQUEST';
+      else if (/octicon-feed-tag\b/.test(iconCls)) cardType = 'RELEASE';
+      else if (/octicon-feed-star\b/.test(iconCls)) cardType = 'STARRED_REPOSITORY';
+      else if (el.querySelector(
+        'img.feed-item-heading-icon[src*="feed-public"], img.feed-item-heading-icon[alt="feed-public"]')) {
+        cardType = 'PRIVATE_TO_PUBLIC_REPOSITORY';
+      } else if (/\breleased\b/.test(plain)) cardType = 'RELEASE';
       else if (/\bforked\b/.test(plain)) cardType = 'FORKED_REPOSITORY';
       else if (/\bstarred\b/.test(plain)) cardType = 'STARRED_REPOSITORY';
+      else if (/\bfollowed\b/.test(plain)) cardType = 'FOLLOW';
+      else if (/\bcreated a repository\b/.test(plain)) cardType = 'CREATED_REPOSITORY';
+      else if (/\bmade this repository public\b/.test(plain)) cardType = 'PRIVATE_TO_PUBLIC_REPOSITORY';
     }
   }
 // 链接 -> 登录名：GitHub 条目内 href 多为绝对地址（https://github.com/<login>），
@@ -74,6 +92,7 @@ function loginFromHref(href) {
     repo: repoLink ? repoLink.textContent.replace(/\s+/g, '').trim() || null : null,
     event: eventBadge ? eventBadge.getAttribute('data-feed-item-type') || null : null,
     cardType,
+    cardSubPosition,
     text: el.textContent.replace(/\s+/g, ' ').trim(),
     el,
   };

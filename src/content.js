@@ -111,8 +111,18 @@ async function applyFilter() {
 
   // 裁决 = 扩展状态（原生分组接管 + 类型偏好 + 角色范围），单一状态源
   // wouldHide 始终按"未撤销"计算（供角标展示恢复后将被滤掉的数量）
+  // 分组发布的正文预览卡（card_sub_position > 0）没有自己的发起者标记，
+  // 裁决继承其主卡；lastMainExcluded 跨批次保留，兼容主卡与预览卡被
+  // 分页拆开的情况
+  let lastMainExcluded = null;
   const results = parsed.map(({ el, item }) => {
-    const excluded = isExcluded(item);
+    let excluded;
+    if ((item.cardSubPosition ?? 0) > 0 && lastMainExcluded !== null) {
+      excluded = lastMainExcluded;
+    } else {
+      excluded = isExcluded(item);
+      lastMainExcluded = excluded;
+    }
     return { el, item, hidden: excluded && !suspended, wouldHide: excluded };
   });
 
