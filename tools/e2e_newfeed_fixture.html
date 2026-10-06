@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<!--
+RefinedGithubFeeds - 新版 /feed 页面结构回归夹具（自断言，无需 Node/CDP）
+
+复刻 https://github.com/feed 登录态实抓结构（2026-10 快照）：
+  feed-container[data-active-topic="for-you"]
+    ├─ 标题行 + details#feed-filter-menu > details-menu > feed-filter（面板）
+    ├─ div[data-target="feed-container.spinner"]（新版加载占位）
+    └─ div[data-target="feed-container.content"] > turbo-frame#conduit-feed-frame
+         ├─ feed-live-container
+         ├─ article.js-feed-item-component.js-feed-item-next-component（hydro card_type）
+         └─ form.ajax-pagination-form（无限加载表单）
+
+条目覆盖四类新版卡片：MERGED_PULL_REQUEST（user 发起者）、RELEASE（organization
+发起者，h3 内无 actor 链接，仅头像为 org hovercard）、STARRED_REPOSITORY、
+ADDED_TO_LIST。新版页面已无 data-feed-item-type / data-test-selector 标记。
+
+脚本依次执行过滤、接管、角标、面板注入等断言，结果写入 <pre id="rgf-e2e-result">。
+
+运行（零依赖）：
+  chrome --headless=new --disable-gpu --virtual-time-budget=15000 \
+    --dump-dom "file:///<仓库根>/tools/e2e_newfeed_fixture.html" | grep -A 200 rgf-e2e-result
+输出 JSON 中 pass 为 true 即全部通过。
+-->
+<head>
+<meta charset="UTF-8" />
+<meta name="user-login" content="alice" />
+<title>RefinedGithubFeeds 新版 /feed 夹具</title>
+<script>
+// ---- chrome.* 最小桩：真实 Chrome 语义（变更记录广播），必须先于扩展脚本加载 ----
+(function () {
+  const data = { 'rgf.enabled': true };
+  window.__rgfStore = data;
+  const listeners = [];
+  window.chrome = {
+    storage: {
+      sync: {
+        async get(keys) {
+          const out = {};
+          for (const k of keys) if (k in data) out[k] = JSON.parse(JSON.stringify(data[k]));
+          return out;
+        },
+        async set(obj) {
+          const changes = {};
+          for (const k of Object.keys(obj)) changes[k] = { oldValue: data[k], newValue: obj[k] };
+          Object.assign(data, JSON.parse(JSON.stringify(obj)));
+          for (const l of [...listeners]) {
+            try { l(changes, 'sync'); } catch (e) { console.error('[stub listener error]', e); }
+          }
+        },
+      },
+      onChanged: { addListener(fn) { listeners.push(fn); } },
+    },
+  };
+})();
+</script>
+<link rel="stylesheet" href="../src/content.css" />
+<link rel="stylesheet" href="../src/panel.css" />
+<style>
+  body{font:14px system-ui;padding:16px;}
+  article.js-feed-item-component{border:1px solid #d1d9e0;border-radius:6px;padding:12px;margin-bottom:8px;position:relative;}
+</style>
+</head>
+<body>
+<main class="flex-1">
+<div id="feed" class="dashboard">
+  <h1 class="sr-only">Feed</h1>
+  <div class="news" data-hpc="">
+    <feed-container data-active-topic="for-you" data-org="" data-catalyst="">
+
+      <div class="d-flex flex-items-center flex-justify-between pb-2">
+        <h2 data-target="feed-container.feedTitle">Feed</h2>
+        <div class="d-flex flex-items-center">
+          <details-toggle data-catalyst="">
+            <details id="feed-filter-menu" data-menu-trigger="feed-filter-menu" data-target="feed-container.filterTrigger details-toggle.detailsTarget" data-view-component="true" class="js-feed-filter-menu feed-filter-menu hx_rsm tmp-ml-3 details-overlay details-reset position-relative mr-0 tmp-mr-0">
+              <summary style="padding-left: 0.75rem; padding-right: 0.75rem" role="button" data-target="details-toggle.summaryTarget" aria-expanded="false" data-view-component="true" class="hx_rsm-trigger btn" aria-haspopup="menu">
+                <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-filter mr-2 tmp-mr-2"><path d="M.75 3h14.5a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1 0-1.5Z"></path></svg>Filter
+                <span hidden="hidden" data-target="feed-container.filterCounter" title="0" data-view-component="true" class="Counter ml-2 tmp-ml-2">0</span>
+              </summary>
+              <details-menu data-view-component="true" class="SelectMenu-modal dropdown-menu-sw hx_rsm-modal feed-filter-menu-body position-absolute">
+                <feed-filter data-target="feed-container.filter" data-value="{&quot;Announcements&quot;:true,&quot;Stars&quot;:true,&quot;RepositoryActivity&quot;:true}" data-default="{&quot;Announcements&quot;:true,&quot;Stars&quot;:true,&quot;RepositoryActivity&quot;:true}" data-view-component="true" class="overflow-hidden d-flex flex-column" data-org="" data-catalyst="">
+                  <div class="SelectMenu-header js-navigation-enable d-flex flex-justify-between" tabindex="-1">
+                    <span class="SelectMenu-title">Filter</span>
+                    <button class="SelectMenu-closeButton" type="button" aria-label="Close menu" data-toggle-for="feed-filter-menu">✕</button>
+                  </div>
+                  <div class="pt-2 overflow-auto">
+                    <div class="tmp-px-3 mt-2">
+                      <h5 class="d-flex flex-items-center">Events</h5>
+                      <p class="small color-fg-muted mt-1">Activity you want to see on your feed</p>
+                    </div>
+                    <div class="SelectMenu-list SelectMenu-list--borderless" role="menu">
+                      <label data-action="click:feed-filter#handleToggle" class="d-flex pl-0 my-2 tmp-px-3 flex-column flex-items-start text-normal SelectMenu-item js-navigation-item" data-selected="true" data-name="Announcements">
+                        <div class="d-flex flex-items-center">
+                          <input type="checkbox" data-targets="feed-filter.inputs" name="Announcements" checked="">
+                          <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-megaphone feed-filter-item-icon color-fg-muted mx-2 tmp-mx-2"><path d="M3.25 9a.75.75 0 0 1 .75.75c0 2.142.456 3.828.733 4.653Z"></path></svg>
+                          <h5 class="d-flex flex-items-center">Announcements</h5>
+                        </div>
+                        <div class="d-flex flex-column"><span class="small color-fg-muted mt-1" style="margin-left: 21px">Special discussion posts from repositories</span></div>
+                      </label>
+                      <label data-action="click:feed-filter#handleToggle" class="d-flex pl-0 my-2 tmp-px-3 flex-column flex-items-start text-normal SelectMenu-item js-navigation-item" data-selected="true" data-name="Stars">
+                        <div class="d-flex flex-items-center">
+                          <input type="checkbox" data-targets="feed-filter.inputs" name="Stars" checked="">
+                          <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-star feed-filter-item-icon color-fg-muted mx-2 tmp-mx-2"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815Z"></path></svg>
+                          <h5 class="d-flex flex-items-center">Stars</h5>
+                        </div>
+                        <div class="d-flex flex-column"><span class="small color-fg-muted mt-1" style="margin-left: 21px">Repositories being starred by people</span></div>
+                      </label>
+                      <label data-action="click:feed-filter#handleToggle" class="d-flex pl-0 my-2 tmp-px-3 flex-column flex-items-start text-normal SelectMenu-item js-navigation-item" data-selected="true" data-name="RepositoryActivity">
+                        <div class="d-flex flex-items-center">
+                          <input type="checkbox" data-targets="feed-filter.inputs" name="RepositoryActivity" checked="">
+                          <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-repo feed-filter-item-icon color-fg-muted mx-2 tmp-mx-2"><path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75Z"></path></svg>
+                          <h5 class="d-flex flex-items-center">RepositoryActivity</h5>
+                        </div>
+                        <div class="d-flex flex-column"><span class="small color-fg-muted mt-1" style="margin-left: 21px">Issues and pull requests from repositories</span></div>
+                      </label>
+                    </div>
+                  </div>
+                  <hr class="m-0 color-fg-muted">
+                  <div class="p-2 d-flex flex-justify-end">
+                    <button data-action="click:feed-filter#resetFilterToDefault" type="button" data-view-component="true" class="Button--invisible Button--medium Button Button--invisible-noVisuals mr-2 tmp-mr-2 py-2 tmp-py-2"><span class="Button-content"><span class="Button-label">Reset to default</span></span></button>
+                    <button data-action="click:feed-filter#handleApply" data-toggle-for="feed-filter-menu" data-target="feed-filter.applyButton" type="button" data-view-component="true" class="Button--primary Button--medium Button py-2 tmp-py-2"><span class="Button-content"><span class="Button-label">Save</span></span></button>
+                  </div>
+                </feed-filter>
+              </details-menu>
+            </details>
+          </details-toggle>
+        </div>
+      </div>
+
+      <div hidden="hidden" data-target="feed-container.spinner" data-view-component="true" class="tmp-py-6 d-flex flex-justify-center flex-items-center"><span class="sr-only">Loading</span></div>
+      <div data-target="feed-container.content">
+        <turbo-frame id="conduit-feed-frame" class="js-for-you-feed-items" data-repository-hovercards-enabled="">
+          <feed-live-container data-catalyst="">
+            <div data-target="feed-live-container.container" class="sr-only js-feed-live-region"></div>
+          </feed-live-container>
+
+          <article id="item-merged" data-hydro-view='{"event_type":"feeds.feed_visible","payload":{"feed_card":{"card_type":"MERGED_PULL_REQUEST","gatherer":"pullrequest_for_you_feed_mysql"}}}' data-view-component="true" class="js-feed-item-component js-feed-item-view js-feed-item-next-component d-flex flex-column width-full flex-items-baseline pt-2 tmp-pt-2 pb-2 tmp-pb-2">
+            <div data-view-component="true" class="feed-item-content d-flex flex-column pt-2 tmp-pt-2 pb-2 tmp-pb-2 border color-border-default rounded-2 color-shadow-small width-full height-fit">
+              <div class="rounded-2 py-1">
+                <div class="tmp-px-3">
+                  <header data-view-component="true" class="mt-1 tmp-mt-1 mb-2 tmp-mb-2 width-full d-flex flex-justify-between">
+                    <div class="mr-2">
+                      <div class="position-relative">
+                        <a data-hovercard-type="user" data-hovercard-url="/users/alice/hovercard" href="/alice" data-view-component="true" class="Link d-block"><img src="" alt="@alice profile" height="40" width="40" class="feed-item-user-avatar avatar circle box-shadow-none"></a>
+                        <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-feed-merged circle feed-item-heading-icon feed-next color-fg-done position-absolute"><path d="M8 16A8 8 0 1 1 8 0a8 8 0 0 1 0 16Z"></path></svg>
+                      </div>
+                    </div>
+                    <div data-view-component="true" class="flex-1 ml-1 tmp-ml-1 mb-1 tmp-mb-1">
+                      <h3 data-view-component="true" class="h5 text-normal color-fg-muted d-flex flex-items-center flex-row flex-nowrap width-fit">
+                        <span class="flex-1">
+                          <span class="flex-shrink-0">
+                            <a data-hovercard-type="user" href="/alice" data-view-component="true" class="Link--primary Link text-bold">alice</a>
+                            merged a pull request in
+                          </span>
+                          <span class="overflow-auto"><span data-view-component="true" class="Truncate"><span data-view-component="true" class="Truncate-text"><a data-hovercard-type="repository" href="/alice/web-toolkit" data-view-component="true" class="Link--primary Link text-bold">alice/web-toolkit</a></span></span></span>
+                        </span>
+                      </h3>
+                    </div>
+                  </header>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article id="item-release" data-hydro-view='{"event_type":"feeds.feed_visible","payload":{"feed_card":{"card_type":"RELEASE","gatherer":"release_mysql"}}}' data-view-component="true" class="js-feed-item-component js-feed-item-view js-feed-item-next-component d-flex flex-column width-full flex-items-baseline pt-2 tmp-pt-2 pb-2 tmp-pb-2">
+            <div data-view-component="true" class="feed-item-content d-flex flex-column pt-2 tmp-pt-2 pb-2 tmp-pb-2 border color-border-default rounded-2 color-shadow-small width-full height-fit">
+              <div class="rounded-2 py-1">
+                <div class="tmp-px-3">
+                  <header data-view-component="true" class="mt-1 tmp-mt-1 mb-2 tmp-mb-2 width-full d-flex flex-justify-between">
+                    <div class="mr-2">
+                      <div class="position-relative">
+                        <a data-hovercard-type="organization" data-hovercard-url="/orgs/acme-org/hovercard" href="/acme-org" data-view-component="true" class="Link d-block"><img src="" alt="@acme-org profile" height="40" width="40" class="feed-item-user-avatar avatar circle box-shadow-none"></a>
+                        <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-feed-tag circle feed-item-heading-icon feed-next color-fg-done position-absolute"><path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025Z"></path></svg>
+                      </div>
+                    </div>
+                    <div data-view-component="true" class="flex-1 ml-1 tmp-ml-1 mb-1 tmp-mb-1">
+                      <h3 data-view-component="true" class="h5 text-normal color-fg-muted d-flex flex-items-center flex-row flex-nowrap width-fit">
+                        <span class="flex-1">
+                          <span class="flex-shrink-0">acme-org released</span>
+                          <span class="overflow-auto"><span data-view-component="true" class="Truncate"><span data-view-component="true" class="Truncate-text"><a data-hovercard-type="repository" href="/acme-org/lib" data-view-component="true" class="Link--primary Link text-bold">acme-org/lib</a></span></span></span>
+                        </span>
+                      </h3>
+                    </div>
+                  </header>
+                  <!-- 对抗样例：真实组织卡正文混有无关 user hovercard（发布者/贡献者），
+                       发起者解析须认头像链接而非正文首个 user 链接 -->
+                  <div class="markdown-body">Released by <a data-hovercard-type="user" data-hovercard-url="/users/release-bot/hovercard" href="/release-bot">@release-bot</a> with love.</div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article id="item-starred" data-hydro-view='{"event_type":"feeds.feed_visible","payload":{"feed_card":{"card_type":"STARRED_REPOSITORY","gatherer":"repostar_mysql"}}}' data-view-component="true" class="js-feed-item-component js-feed-item-view js-feed-item-next-component d-flex flex-column width-full flex-items-baseline pt-2 tmp-pt-2 pb-2 tmp-pb-2">
+            <div data-view-component="true" class="feed-item-content d-flex flex-column pt-2 tmp-pt-2 pb-2 tmp-pb-2 border color-border-default rounded-2 color-shadow-small width-full height-fit">
+              <div class="rounded-2 py-1">
+                <div class="tmp-px-3">
+                  <header data-view-component="true" class="mt-1 tmp-mt-1 mb-2 tmp-mb-2 width-full d-flex flex-justify-between">
+                    <div class="mr-2">
+                      <div class="position-relative">
+                        <a data-hovercard-type="user" href="/bob" data-view-component="true" class="Link d-block"><img src="" alt="@bob profile" height="40" width="40" class="feed-item-user-avatar avatar circle box-shadow-none"></a>
+                        <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-feed-star circle feed-item-heading-icon feed-next color-fg-done position-absolute"><path d="M8 .25a.75.75 0 0 1 .673.418Z"></path></svg>
+                      </div>
+                    </div>
+                    <div data-view-component="true" class="flex-1 ml-1 tmp-ml-1 mb-1 tmp-mb-1">
+                      <h3 data-view-component="true" class="h5 text-normal color-fg-muted d-flex flex-items-center flex-row flex-nowrap width-fit">
+                        <span class="flex-1">
+                          <span class="flex-shrink-0">
+                            <a data-hovercard-type="user" href="/bob" data-view-component="true" class="Link--primary Link text-bold">bob</a>
+                            starred
+                          </span>
+                          <span class="overflow-auto"><span data-view-component="true" class="Truncate"><span data-view-component="true" class="Truncate-text"><a data-hovercard-type="repository" href="/spammer/junk" data-view-component="true" class="Link--primary Link text-bold">spammer/junk</a></span></span></span>
+                        </span>
+                      </h3>
+                    </div>
+                  </header>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article id="item-listed" data-hydro-view='{"event_type":"feeds.feed_visible","payload":{"feed_card":{"card_type":"ADDED_TO_LIST","gatherer":"userlist_mysql"}}}' data-view-component="true" class="js-feed-item-component js-feed-item-view js-feed-item-next-component d-flex flex-column width-full flex-items-baseline pt-2 tmp-pt-2 pb-2 tmp-pb-2">
+            <div data-view-component="true" class="feed-item-content d-flex flex-column pt-2 tmp-pt-2 pb-2 tmp-pb-2 border color-border-default rounded-2 color-shadow-small width-full height-fit">
+              <div class="rounded-2 py-1">
+                <div class="tmp-px-3">
+                  <header data-view-component="true" class="mt-1 tmp-mt-1 mb-2 tmp-mb-2 width-full d-flex flex-justify-between">
+                    <div class="mr-2">
+                      <div class="position-relative">
+                        <a data-hovercard-type="user" href="/alice" data-view-component="true" class="Link d-block"><img src="" alt="@alice profile" height="40" width="40" class="feed-item-user-avatar avatar circle box-shadow-none"></a>
+                        <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" class="octicon octicon-feed-star circle feed-item-heading-icon feed-next color-fg-done position-absolute"><path d="M8 .25a.75.75 0 0 1 .673.418Z"></path></svg>
+                      </div>
+                    </div>
+                    <div data-view-component="true" class="flex-1 ml-1 tmp-ml-1 mb-1 tmp-mb-1">
+                      <h3 data-view-component="true" class="h5 text-normal color-fg-muted d-flex flex-items-center flex-row flex-nowrap width-fit">
+                        <span class="flex-1">
+                          <span class="flex-shrink-0">
+                            <a data-hovercard-type="user" href="/alice" data-view-component="true" class="Link--primary Link text-bold">alice</a>
+                            added a repository to
+                            <a href="/stars/alice/lists/ai" data-view-component="true" class="Link--primary Link">their list</a>
+                          </span>
+                          <span class="overflow-auto"><span data-view-component="true" class="Truncate"><span data-view-component="true" class="Truncate-text"><a data-hovercard-type="repository" href="/other/toolbox" data-view-component="true" class="Link--primary Link text-bold">other/toolbox</a></span></span></span>
+                        </span>
+                      </h3>
+                    </div>
+                  </header>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <form class="ajax-pagination-form js-ajax-pagination" data-turbo="false" action="/conduit/for_you_feed?page=2" accept-charset="UTF-8" method="get">
+            <button name="button" type="submit" class="ajax-pagination-btn color-bg-overlay" data-disable-with="Loading more…">More</button>
+          </form>
+        </turbo-frame>
+      </div>
+
+    </feed-container>
+  </div>
+</div>
+</main>
+<script src="../src/shared.js"></script>
+<script src="../src/content.js"></script>
+<script src="../src/panel.js"></script>
+<script>
+// ---- 自断言：按场景顺序执行，结果汇总写入 #rgf-e2e-result ----
+(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function until(fn, ms = 3000) {
+    const start = Date.now();
+    for (;;) {
+      let v;
+      try { v = fn(); } catch { v = null; }
+      if (v) return v;
+      if (Date.now() - start > ms) return null;
+      await sleep(50);
+    }
+  }
+  const results = [];
+  const check = (name, actual, expected) => results.push({
+    name, ok: JSON.stringify(actual) === JSON.stringify(expected), actual, expected,
+  });
+
+  const badgeText = () => document.querySelector('#rgf-badge')?.textContent ?? null;
+  const display = (id) => document.getElementById(id)?.style.display ?? '';
+  const visible = (id) => display(id) !== 'none';
+
+  // 等待扩展初始化（角标出现）
+  const ready = await until(() => document.querySelector('#rgf-badge')?.textContent);
+  check('扩展初始化（角标出现）', !!ready, true);
+
+  // 场景 1：基线 —— 新版结构全部显示、快捷按钮挂载、注入区块挂在新版面板宿主内
+  await until(() => document.querySelectorAll('.rgf-quick-btn button').length >= 4);
+  check('基线：四个条目全部显示',
+    ['item-merged', 'item-release', 'item-starred', 'item-listed'].every(visible), true);
+  check('基线：角标文案', badgeText(), '暂无隐藏动态');
+  check('基线：条目挂载快捷按钮',
+    document.querySelectorAll('.rgf-quick-btn button').length >= 4, true);
+  const block = await until(() =>
+    document.querySelector('#feed-filter-menu details-menu feed-filter .pt-2.overflow-auto > .rgf-filter-block'));
+  check('面板：注入区块进入新版宿主（details > details-menu > feed-filter）', !!block, true);
+
+  // 场景 2：原生分组接管（storage 驱动 -> 前端隐藏 + 原生复选框/注入开关双向镜像）
+  await chrome.storage.sync.set({ 'rgf.nativeGroups': { RepositoryActivity: false } });
+  await until(() => visible('item-merged') === false);
+  check('分组：取消 RepositoryActivity 后 PR 条目隐藏', visible('item-merged'), false);
+  check('分组：其余条目不受影响',
+    [visible('item-release'), visible('item-starred'), visible('item-listed')], [true, true, true]);
+  check('分组：角标计数', badgeText(), '已隐藏 1 条动态，点击临时撤销');
+  await until(() => document.querySelector('#feed-filter-menu input[name="RepositoryActivity"]')?.checked === false);
+  check('分组：原生复选框镜像同步',
+    document.querySelector('#feed-filter-menu input[name="RepositoryActivity"]')?.checked, false);
+  await until(() =>
+    document.querySelector('.rgf-filter-block input[data-native-group-switch="RepositoryActivity"]')?.checked === false);
+  check('分组：注入区块开关镜像同步',
+    document.querySelector('.rgf-filter-block input[data-native-group-switch="RepositoryActivity"]')?.checked, false);
+
+  // 场景 3：角标临时撤销 -> 恢复
+  document.getElementById('rgf-badge').click();
+  await until(() => visible('item-merged'));
+  check('撤销：条目恢复显示', visible('item-merged'), true);
+  check('撤销：角标展示将隐藏数', badgeText(), '已临时撤销过滤 · 隐藏计数 1（点击恢复）');
+  document.getElementById('rgf-badge').click();
+  await until(() => visible('item-merged') === false);
+  check('撤销：再次点击恢复过滤', visible('item-merged'), false);
+
+  // 场景 4：角色范围 —— org 发起者判定（RELEASE 条目 h3 无 actor 链接，靠 org hovercard 头像）
+  await chrome.storage.sync.set({ 'rgf.nativeGroups': {} });
+  await until(() => visible('item-merged'));
+  await chrome.storage.sync.set({ 'rgf.scope': { roleMode: 'orgs' } });
+  await until(() => visible('item-release') && !visible('item-merged'));
+  check('角色：只看组织时 org 条目显示', visible('item-release'), true);
+  check('角色：只看组织时用户条目隐藏',
+    [visible('item-merged'), visible('item-starred'), visible('item-listed')], [false, false, false]);
+  await chrome.storage.sync.set({ 'rgf.scope': { roleMode: 'all' } });
+  await until(() => visible('item-merged'));
+
+  // 场景 5：只看我仓库
+  await chrome.storage.sync.set({ 'rgf.scope': { onlyMyRepos: true } });
+  await until(() => visible('item-merged') && !visible('item-starred'));
+  check('仓库：自有仓库条目显示', visible('item-merged'), true);
+  check('仓库：外部仓库条目隐藏',
+    [visible('item-release'), visible('item-starred'), visible('item-listed')], [false, false, false]);
+  await chrome.storage.sync.set({ 'rgf.scope': {} });
+  await until(() => visible('item-starred'));
+
+  // 场景 6：快捷按钮「隐藏此类动态」-> cardTypes 持久化 + 面板开关镜像
+  document.querySelector('#item-starred .rgf-quick-btn button').click();
+  await until(() => visible('item-starred') === false);
+  check('快捷：star 条目被隐藏', visible('item-starred'), false);
+  await until(() =>
+    (window.__rgfStore['rgf.cardTypes'] || {}).STARRED_REPOSITORY === false);
+  check('快捷：cardTypes 持久化',
+    (window.__rgfStore['rgf.cardTypes'] || {}).STARRED_REPOSITORY, false);
+  await until(() =>
+    document.querySelector('.rgf-filter-block input[data-card-type="STARRED_REPOSITORY"]')?.checked === false);
+  check('快捷：面板类型开关镜像', document.querySelector('.rgf-filter-block input[data-card-type="STARRED_REPOSITORY"]')?.checked, false);
+
+  // 场景 7：无限滚动插入新版结构条目，去抖后按同规则过滤
+  const art = document.createElement('article');
+  art.id = 'item-infinite';
+  art.className = 'js-feed-item-component js-feed-item-view js-feed-item-next-component';
+  art.setAttribute('data-hydro-view',
+    JSON.stringify({ payload: { feed_card: { card_type: 'STARRED_REPOSITORY' } } }));
+  art.innerHTML = '<h3><a data-hovercard-type="user" href="/bob">bob</a> starred ' +
+    '<a data-hovercard-type="repository" href="/spammer/junk">spammer/junk</a></h3>';
+  document.getElementById('conduit-feed-frame').appendChild(art);
+  await until(() => display('item-infinite') === 'none');
+  check('加载：新插入条目按已存类型偏好过滤', display('item-infinite'), 'none');
+  check('加载：角标计数累计', badgeText(), '已隐藏 2 条动态，点击临时撤销');
+
+  // 场景 8：重置类型偏好恢复显示
+  await chrome.storage.sync.set({ 'rgf.cardTypes': {} });
+  await until(() => visible('item-starred') && visible('item-infinite'));
+  check('重置：类型偏好清空后恢复显示',
+    [visible('item-starred'), visible('item-infinite')], [true, true]);
+
+  // 场景 9：Save / Reset 接管 —— 新版 details 菜单关闭且状态正确
+  const menu = document.getElementById('feed-filter-menu');
+  await chrome.storage.sync.set({ 'rgf.nativeGroups': { Stars: false } });
+  await until(() => visible('item-starred') === false);
+  check('接管：取消 Stars 分组后 star 条目隐藏', visible('item-starred'), false);
+  menu.setAttribute('open', '');
+  menu.querySelector('button[data-target="feed-filter.applyButton"]').click();
+  await until(() => !menu.hasAttribute('open'));
+  check('接管：Save 关闭新版 details 菜单', menu.hasAttribute('open'), false);
+  check('接管：Save 保留扩展状态', window.__rgfStore['rgf.nativeGroups'], { Stars: false });
+  menu.setAttribute('open', '');
+  // 与扩展同款定位：真实标记 data-action="click:feed-filter#resetFilterToDefault"，
+  // ~= 令牌选择器匹配不到，需按文案回退
+  [...menu.querySelectorAll('button')].find((b) => /reset/i.test(b.textContent)).click();
+  await until(() => visible('item-starred'));
+  check('接管：Reset 清空分组状态', window.__rgfStore['rgf.nativeGroups'], {});
+  check('接管：Reset 后条目恢复显示', visible('item-starred'), true);
+  check('接管：Reset 后菜单关闭', menu.hasAttribute('open'), false);
+
+  const pre = document.createElement('pre');
+  pre.id = 'rgf-e2e-result';
+  pre.textContent = JSON.stringify({ pass: results.every((r) => r.ok), results }, null, 1);
+  document.body.appendChild(pre);
+})().catch((e) => {
+  const pre = document.createElement('pre');
+  pre.id = 'rgf-e2e-result';
+  pre.textContent = JSON.stringify({ pass: false, fatal: String(e && e.stack || e) }, null, 1);
+  document.body.appendChild(pre);
+});
+</script>
+</body>
+</html>
