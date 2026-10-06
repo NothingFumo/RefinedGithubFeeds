@@ -21,7 +21,9 @@
       "matches": [
         "https://github.com/",
         "https://github.com/dashboard",
-        "https://github.com/dashboard*"
+        "https://github.com/dashboard*",
+        "https://github.com/feed",
+        "https://github.com/feed*"
       ],
       "js": [
         "src/shared.js",
